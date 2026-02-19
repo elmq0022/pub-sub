@@ -17,8 +17,11 @@ func NewNode() *Node {
 	}
 }
 
-func (n *Node) AddSub(sub string, sid int64) {
-	parts := strings.Split(sub, ".")
+func (n *Node) AddSub(sub string, sid int64) error {
+	parts, err := validSub(sub)
+	if err != nil {
+		return err
+	}
 	cur := n
 	for _, part := range parts {
 		if cur.ch[part] == nil {
@@ -30,6 +33,7 @@ func (n *Node) AddSub(sub string, sid int64) {
 		cur.subs = set.NewSet[int64]()
 	}
 	cur.subs.Add(sid)
+	return nil
 }
 
 func (n *Node) Lookup(sub string) []int64 {
