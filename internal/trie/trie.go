@@ -6,20 +6,20 @@ import (
 	"github.com/elmq0022/gohan/set"
 )
 
-type Node struct {
-	ch   map[string]*Node
+type node struct {
+	ch   map[string]*node
 	subs *set.Set[int64]
 }
 
-func newNode() *Node {
-	return &Node{
-		ch: make(map[string]*Node),
+func newNode() *node {
+	return &node{
+		ch: make(map[string]*node),
 	}
 }
 
 type Trie struct {
 	mu   sync.RWMutex
-	root *Node
+	root *node
 }
 
 func NewTrie() *Trie {
@@ -48,7 +48,7 @@ func (t *Trie) AddSub(sub string, sid int64) error {
 }
 
 func (t *Trie) Lookup(sub string) ([]int64, error) {
-	parts, err := validSub(sub)
+	parts, err := validLookup(sub)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (t *Trie) Lookup(sub string) ([]int64, error) {
 	return res.Slice(), nil
 }
 
-func match(parts []string, n *Node, res *set.Set[int64]) {
+func match(parts []string, n *node, res *set.Set[int64]) {
 	if len(parts) == 0 {
 		if n.subs != nil {
 			res.Merge(n.subs)

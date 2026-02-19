@@ -107,6 +107,125 @@ func TestValidSub(t *testing.T) {
 	}
 }
 
+func TestValidLookup(t *testing.T) {
+	tests := []struct {
+		name    string
+		subject string
+		want    []string
+		wantErr string
+	}{
+		{
+			name:    "simple topic",
+			subject: "foo.bar.baz",
+			want:    []string{"foo", "bar", "baz"},
+		},
+		{
+			name:    "single token",
+			subject: "foo",
+			want:    []string{"foo"},
+		},
+		{
+			name:    "empty string",
+			subject: "",
+			wantErr: "must not be empty",
+		},
+		{
+			name:    "empty token (leading dot)",
+			subject: ".foo",
+			wantErr: "empty token",
+		},
+		{
+			name:    "empty token (trailing dot)",
+			subject: "foo.",
+			wantErr: "empty token",
+		},
+		{
+			name:    "empty token (double dot)",
+			subject: "foo..bar",
+			wantErr: "empty token",
+		},
+		{
+			name:    "star wildcard not allowed",
+			subject: "foo.*",
+			wantErr: "wildcards not allowed in lookup",
+		},
+		{
+			name:    "greater-than wildcard not allowed",
+			subject: "foo.>",
+			wantErr: "wildcards not allowed in lookup",
+		},
+		{
+			name:    "greater-than only not allowed",
+			subject: ">",
+			wantErr: "wildcards not allowed in lookup",
+		},
+		{
+			name:    "embedded wildcard not allowed",
+			subject: "foo.b*r",
+			wantErr: "wildcards not allowed in lookup",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := validLookup(tt.subject)
+
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				var lookupErr *LookupError
+				if !errors.As(err, &lookupErr) {
+					t.Fatalf("expected *LookupError, got %T: %v", err, err)
+				}
+				if lookupErr.Reason != tt.wantErr {
+					t.Fatalf("expected reason %q, got %q", tt.wantErr, lookupErr.Reason)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Fatalf("got %v, want %v", got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestLookupError_Error(t *testing.T) {
+	tests := []struct {
+		name string
+		err  *LookupError
+		want string
+	}{
+		{
+			name: "with subject",
+			err:  &LookupError{Subject: "foo.*", Reason: "wildcards not allowed in lookup"},
+			want: `invalid lookup "foo.*": wildcards not allowed in lookup`,
+		},
+		{
+			name: "empty subject",
+			err:  &LookupError{Subject: "", Reason: "must not be empty"},
+			want: "invalid lookup: must not be empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.err.Error(); got != tt.want {
+				t.Fatalf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSubError_Error(t *testing.T) {
 	tests := []struct {
 		name string

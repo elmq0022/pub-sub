@@ -42,3 +42,38 @@ func validSub(sub string) ([]string, error) {
 
 	return parts, nil
 }
+
+type LookupError struct {
+	Subject string
+	Reason  string
+}
+
+func (e *LookupError) Error() string {
+	if e.Subject == "" {
+		return "invalid lookup: " + e.Reason
+	}
+	return "invalid lookup \"" + e.Subject + "\": " + e.Reason
+}
+
+func lookupErr(subject, reason string) error {
+	return &LookupError{Subject: subject, Reason: reason}
+}
+
+func validLookup(subject string) ([]string, error) {
+	if subject == "" {
+		return nil, lookupErr(subject, "must not be empty")
+	}
+
+	parts := strings.Split(subject, ".")
+
+	for _, part := range parts {
+		switch {
+		case part == "":
+			return nil, lookupErr(subject, "empty token")
+		case strings.ContainsAny(part, ">*"):
+			return nil, lookupErr(subject, "wildcards not allowed in lookup")
+		}
+	}
+
+	return parts, nil
+}
