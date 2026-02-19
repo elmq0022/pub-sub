@@ -109,6 +109,29 @@ func TestMultipleSubscribers(t *testing.T) {
 	}
 }
 
+func TestRootGreaterThan(t *testing.T) {
+	topics := []string{"foo", "foo.bar", "foo.bar.baz", "a.b.c.d"}
+
+	tr := trie.NewTrie()
+	tr.AddSub(">", 99)
+
+	for _, topic := range topics {
+		got := mustLookup(t, tr, topic)
+		if len(got) != 1 || got[0] != 99 {
+			t.Fatalf("topic %q: got %v, want [99]", topic, got)
+		}
+	}
+
+	// Without > subscribed the same topics must return no matches.
+	empty := trie.NewTrie()
+	for _, topic := range topics {
+		got := mustLookup(t, empty, topic)
+		if len(got) != 0 {
+			t.Fatalf("empty trie, topic %q: got %v, want []", topic, got)
+		}
+	}
+}
+
 func TestLookupInvalidSub(t *testing.T) {
 	tr := trie.NewTrie()
 	_, err := tr.Lookup("")
