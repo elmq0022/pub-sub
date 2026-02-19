@@ -12,12 +12,21 @@ func sorted(ids []int64) []int64 {
 	return ids
 }
 
-func TestExactMatch(t *testing.T) {
-	root := trie.NewNode()
-	root.AddSub("foo.bar", 1)
-	root.AddSub("foo.bar", 2)
+func mustLookup(t *testing.T, tr *trie.Trie, sub string) []int64 {
+	t.Helper()
+	ids, err := tr.Lookup(sub)
+	if err != nil {
+		t.Fatalf("Lookup(%q) unexpected error: %v", sub, err)
+	}
+	return ids
+}
 
-	got := sorted(root.Lookup("foo.bar"))
+func TestExactMatch(t *testing.T) {
+	tr := trie.NewTrie()
+	tr.AddSub("foo.bar", 1)
+	tr.AddSub("foo.bar", 2)
+
+	got := sorted(mustLookup(t, tr, "foo.bar"))
 	want := []int64{1, 2}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("got %v, want %v", got, want)
@@ -25,70 +34,70 @@ func TestExactMatch(t *testing.T) {
 }
 
 func TestNoMatch(t *testing.T) {
-	root := trie.NewNode()
-	root.AddSub("foo.bar", 1)
+	tr := trie.NewTrie()
+	tr.AddSub("foo.bar", 1)
 
-	got := root.Lookup("foo.baz")
+	got := mustLookup(t, tr, "foo.baz")
 	if len(got) != 0 {
 		t.Fatalf("expected no matches, got %v", got)
 	}
 }
 
 func TestWildcardStar(t *testing.T) {
-	root := trie.NewNode()
-	root.AddSub("foo.*", 10)
+	tr := trie.NewTrie()
+	tr.AddSub("foo.*", 10)
 
-	got := root.Lookup("foo.bar")
+	got := mustLookup(t, tr, "foo.bar")
 	if len(got) != 1 || got[0] != 10 {
 		t.Fatalf("got %v, want [10]", got)
 	}
 
-	got = root.Lookup("foo.baz")
+	got = mustLookup(t, tr, "foo.baz")
 	if len(got) != 1 || got[0] != 10 {
 		t.Fatalf("got %v, want [10]", got)
 	}
 
-	got = root.Lookup("foo.bar.baz")
+	got = mustLookup(t, tr, "foo.bar.baz")
 	if len(got) != 0 {
 		t.Fatalf("* should not match multiple levels, got %v", got)
 	}
 }
 
 func TestWildcardGreaterThan(t *testing.T) {
-	root := trie.NewNode()
-	root.AddSub("foo.>", 20)
+	tr := trie.NewTrie()
+	tr.AddSub("foo.>", 20)
 
 	for _, topic := range []string{"foo.bar", "foo.bar.baz", "foo.a.b.c"} {
-		got := root.Lookup(topic)
+		got := mustLookup(t, tr, topic)
 		if len(got) != 1 || got[0] != 20 {
 			t.Fatalf("topic %q: got %v, want [20]", topic, got)
 		}
 	}
 
-	got := root.Lookup("foo")
+	got := mustLookup(t, tr, "foo")
 	if len(got) != 0 {
 		t.Fatalf("got %v, want no match for 'foo'", got)
 	}
 }
 
 func TestDeduplicate(t *testing.T) {
-	root := trie.NewNode()
-	root.AddSub("foo.bar", 5)
-	root.AddSub("foo.*", 5)
+	tr := trie.NewTrie()
+	tr.AddSub("foo.bar", 5)
+	tr.AddSub("foo.*", 5)
 
-	got := root.Lookup("foo.bar")
+	got := mustLookup(t, tr, "foo.bar")
 	if len(got) != 1 || got[0] != 5 {
 		t.Fatalf("expected deduplication, got %v", got)
 	}
 }
 
 func TestMultipleSubscribers(t *testing.T) {
-	root := trie.NewNode()
-	root.AddSub("a.b", 1)
-	root.AddSub("a.*", 2)
-	root.AddSub("a.>", 3)
+	tr := trie.NewTrie()
+	tr.AddSub("a.b", 1)
+	tr.AddSub("a.*", 2)
+	tr.AddSub("a.>", 3)
 
-	got := sorted(root.Lookup("a.b"))
+	got := sorted(mustLookup(t, tr, "a.b"))
 	want := []int64{1, 2, 3}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
@@ -97,5 +106,13 @@ func TestMultipleSubscribers(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("got %v, want %v", got, want)
 		}
+	}
+}
+
+func TestLookupInvalidSub(t *testing.T) {
+	tr := trie.NewTrie()
+	_, err := tr.Lookup("")
+	if err == nil {
+		t.Fatal("expected error for empty subject, got nil")
 	}
 }

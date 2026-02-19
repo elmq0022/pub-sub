@@ -1,7 +1,7 @@
 package trie
 
 import (
-	"strings"
+	"sync"
 
 	"github.com/elmq0022/gohan/set"
 )
@@ -11,21 +11,32 @@ type Node struct {
 	subs *set.Set[int64]
 }
 
-func NewNode() *Node {
+func newNode() *Node {
 	return &Node{
 		ch: make(map[string]*Node),
 	}
 }
 
-func (n *Node) AddSub(sub string, sid int64) error {
+type Trie struct {
+	mu   sync.RWMutex
+	root *Node
+}
+
+func NewTrie() *Trie {
+	return &Trie{root: newNode()}
+}
+
+func (t *Trie) AddSub(sub string, sid int64) error {
 	parts, err := validSub(sub)
 	if err != nil {
 		return err
 	}
-	cur := n
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	cur := t.root
 	for _, part := range parts {
 		if cur.ch[part] == nil {
-			cur.ch[part] = NewNode()
+			cur.ch[part] = newNode()
 		}
 		cur = cur.ch[part]
 	}
@@ -36,11 +47,16 @@ func (n *Node) AddSub(sub string, sid int64) error {
 	return nil
 }
 
-func (n *Node) Lookup(sub string) []int64 {
+func (t *Trie) Lookup(sub string) ([]int64, error) {
+	parts, err := validSub(sub)
+	if err != nil {
+		return nil, err
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 	res := set.NewSet[int64]()
-	parts := strings.Split(sub, ".")
-	match(parts, n, res)
-	return res.Slice()
+	match(parts, t.root, res)
+	return res.Slice(), nil
 }
 
 func match(parts []string, n *Node, res *set.Set[int64]) {
