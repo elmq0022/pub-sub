@@ -11,12 +11,15 @@ type Sub struct {
 }
 
 type node struct {
-	ch   map[string]*node
-	subs []Sub
+	parent   *node
+	children map[string]*node
+	subs     []Sub
 }
 
-func newNode() *node {
-	return &node{ch: make(map[string]*node)}
+func newNode(parent *node) *node {
+	return &node{
+		parent:   parent,
+		children: make(map[string]*node)}
 }
 
 type Trie struct {
@@ -27,7 +30,7 @@ type Trie struct {
 
 func NewTrie() *Trie {
 	return &Trie{
-		root:  newNode(),
+		root:  newNode(nil),
 		index: make(map[int64]map[int64]*node),
 	}
 }
@@ -41,10 +44,10 @@ func (t *Trie) AddSub(sub string, s Sub) error {
 	defer t.mu.Unlock()
 	cur := t.root
 	for _, part := range parts {
-		if cur.ch[part] == nil {
-			cur.ch[part] = newNode()
+		if cur.children[part] == nil {
+			cur.children[part] = newNode(cur)
 		}
-		cur = cur.ch[part]
+		cur = cur.children[part]
 	}
 	if t.index[s.CID] == nil {
 		t.index[s.CID] = make(map[int64]*node)
@@ -72,15 +75,15 @@ func match(parts []string, n *node, res *[]Sub) {
 		return
 	}
 
-	if n.ch[parts[0]] != nil {
-		match(parts[1:], n.ch[parts[0]], res)
+	if n.children[parts[0]] != nil {
+		match(parts[1:], n.children[parts[0]], res)
 	}
 
-	if n.ch["*"] != nil {
-		match(parts[1:], n.ch["*"], res)
+	if n.children["*"] != nil {
+		match(parts[1:], n.children["*"], res)
 	}
 
-	if n.ch[">"] != nil {
-		*res = append(*res, n.ch[">"].subs...)
+	if n.children[">"] != nil {
+		*res = append(*res, n.children[">"].subs...)
 	}
 }
