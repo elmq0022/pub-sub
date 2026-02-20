@@ -118,6 +118,9 @@ func (t *Trie) RemoveSub(CID, SID int64) error {
 	return nil
 }
 
+// removeSub removes all subs matching (CID, SID) from the node's subs slice in
+// O(n) time. Duplicates are possible because AddSub does not check for them,
+// so this cleans up all copies in a single pass.
 func (n *node) removeSub(CID, SID int64) {
 	if n == nil || len(n.subs) == 0 {
 		return
