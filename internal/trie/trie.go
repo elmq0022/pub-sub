@@ -1,6 +1,9 @@
 package trie
 
-import "sync"
+import (
+	"errors"
+	"sync"
+)
 
 type client struct{}
 
@@ -11,13 +14,15 @@ type Sub struct {
 }
 
 type node struct {
+	key      string
 	parent   *node
 	children map[string]*node
 	subs     []Sub
 }
 
-func newNode(parent *node) *node {
+func newNode(parent *node, key string) *node {
 	return &node{
+		key:      key,
 		parent:   parent,
 		children: make(map[string]*node)}
 }
@@ -30,7 +35,7 @@ type Trie struct {
 
 func NewTrie() *Trie {
 	return &Trie{
-		root:  newNode(nil),
+		root:  newNode(nil, ""),
 		index: make(map[int64]map[int64]*node),
 	}
 }
@@ -45,7 +50,7 @@ func (t *Trie) AddSub(sub string, s Sub) error {
 	cur := t.root
 	for _, part := range parts {
 		if cur.children[part] == nil {
-			cur.children[part] = newNode(cur)
+			cur.children[part] = newNode(cur, part)
 		}
 		cur = cur.children[part]
 	}
@@ -86,4 +91,48 @@ func match(parts []string, n *node, res *[]Sub) {
 	if n.children[">"] != nil {
 		*res = append(*res, n.children[">"].subs...)
 	}
+}
+
+func (t *Trie) RemoveSub(CID, SID int64) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.index[CID] == nil || t.index[CID][SID] == nil {
+		return errors.New("no subscription")
+	}
+
+	n := t.index[CID][SID]
+	delete(t.index[CID], SID)
+	if len(t.index[CID]) == 0 {
+		delete(t.index, CID)
+	}
+
+	n.removeSub(CID, SID)
+
+	for n != nil && n.parent != nil && len(n.subs) == 0 && len(n.children) == 0 {
+		parent := n.parent
+		delete(parent.children, n.key)
+		n = parent
+	}
+
+	return nil
+}
+
+func (n *node) removeSub(CID, SID int64) {
+	if n == nil || len(n.subs) == 0 {
+		return
+	}
+
+	l, r := 0, len(n.subs)-1
+	for l <= r {
+		for r >= l && n.subs[r].CID == CID && n.subs[r].SID == SID {
+			r--
+		}
+		if l < r && n.subs[l].CID == CID && n.subs[l].SID == SID {
+			n.subs[l], n.subs[r] = n.subs[r], n.subs[l]
+		}
+		l++
+	}
+
+	n.subs = n.subs[:r+1]
 }
