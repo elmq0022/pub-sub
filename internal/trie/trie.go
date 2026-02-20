@@ -20,11 +20,17 @@ func newNode() *node {
 }
 
 type Trie struct {
-	mu   sync.RWMutex
-	root *node
+	mu    sync.RWMutex
+	root  *node
+	index map[int64]map[int64]*node
 }
 
-func NewTrie() *Trie { return &Trie{root: newNode()} }
+func NewTrie() *Trie {
+	return &Trie{
+		root:  newNode(),
+		index: make(map[int64]map[int64]*node),
+	}
+}
 
 func (t *Trie) AddSub(sub string, s Sub) error {
 	parts, err := validSub(sub)
@@ -40,6 +46,10 @@ func (t *Trie) AddSub(sub string, s Sub) error {
 		}
 		cur = cur.ch[part]
 	}
+	if t.index[s.CID] == nil {
+		t.index[s.CID] = make(map[int64]*node)
+	}
+	t.index[s.CID][s.SID] = cur
 	cur.subs = append(cur.subs, s)
 	return nil
 }
