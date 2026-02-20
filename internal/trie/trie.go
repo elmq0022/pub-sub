@@ -1,20 +1,22 @@
 package trie
 
-import (
-	"sync"
+import "sync"
 
-	"github.com/elmq0022/gohan/set"
-)
+type client struct{}
+
+type Sub struct {
+	CID    int64
+	SID    int64
+	Client *client
+}
 
 type node struct {
 	ch   map[string]*node
-	subs *set.Set[int64]
+	subs []Sub
 }
 
 func newNode() *node {
-	return &node{
-		ch: make(map[string]*node),
-	}
+	return &node{ch: make(map[string]*node)}
 }
 
 type Trie struct {
@@ -22,11 +24,9 @@ type Trie struct {
 	root *node
 }
 
-func NewTrie() *Trie {
-	return &Trie{root: newNode()}
-}
+func NewTrie() *Trie { return &Trie{root: newNode()} }
 
-func (t *Trie) AddSub(sub string, sid int64) error {
+func (t *Trie) AddSub(sub string, s Sub) error {
 	parts, err := validSub(sub)
 	if err != nil {
 		return err
@@ -40,30 +40,25 @@ func (t *Trie) AddSub(sub string, sid int64) error {
 		}
 		cur = cur.ch[part]
 	}
-	if cur.subs == nil {
-		cur.subs = set.NewSet[int64]()
-	}
-	cur.subs.Add(sid)
+	cur.subs = append(cur.subs, s)
 	return nil
 }
 
-func (t *Trie) Lookup(sub string) ([]int64, error) {
+func (t *Trie) Lookup(sub string) ([]Sub, error) {
 	parts, err := validLookup(sub)
 	if err != nil {
 		return nil, err
 	}
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	res := set.NewSet[int64]()
-	match(parts, t.root, res)
-	return res.Slice(), nil
+	var res []Sub
+	match(parts, t.root, &res)
+	return res, nil
 }
 
-func match(parts []string, n *node, res *set.Set[int64]) {
+func match(parts []string, n *node, res *[]Sub) {
 	if len(parts) == 0 {
-		if n.subs != nil {
-			res.Merge(n.subs)
-		}
+		*res = append(*res, n.subs...)
 		return
 	}
 
@@ -75,7 +70,7 @@ func match(parts []string, n *node, res *set.Set[int64]) {
 		match(parts[1:], n.ch["*"], res)
 	}
 
-	if n.ch[">"] != nil && n.ch[">"].subs != nil {
-		res.Merge(n.ch[">"].subs)
+	if n.ch[">"] != nil {
+		*res = append(*res, n.ch[">"].subs...)
 	}
 }
