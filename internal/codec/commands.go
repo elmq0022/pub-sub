@@ -6,8 +6,9 @@ const (
 	KindPing Kind = iota
 	KindPong
 	KindConnect
-	KindSub
 	KindPub
+	KindSub
+	KindUnsub
 )
 
 type Command interface {
@@ -26,13 +27,26 @@ type Connect struct{}
 
 func (Connect) Kind() Kind { return KindConnect }
 
-type Pub struct{}
+type Sub struct {
+	Subject []byte
+	SID     int64
+}
+
+func (Sub) Kind() Kind { return KindSub }
+
+type Pub struct {
+	Subject []byte
+	Len     int64
+	Msg     []byte
+}
 
 func (Pub) Kind() Kind { return KindPub }
 
-type Sub struct{}
+type Unsub struct {
+	SID int64
+}
 
-func (Sub) Kind() Kind { return KindSub }
+func (Unsub) Kind() Kind { return KindUnsub }
 
 // CONNECT {}
 // PING
