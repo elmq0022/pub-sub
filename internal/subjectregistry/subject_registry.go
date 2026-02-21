@@ -1,4 +1,4 @@
-package trie
+package subjectregistry
 
 import (
 	"errors"
@@ -27,20 +27,20 @@ func newNode(parent *node, key string) *node {
 		children: make(map[string]*node)}
 }
 
-type Trie struct {
+type SubjectRegistry struct {
 	mu    sync.RWMutex
 	root  *node
 	index map[int64]map[int64]*node
 }
 
-func NewTrie() *Trie {
-	return &Trie{
+func NewSubjectRegistry() *SubjectRegistry {
+	return &SubjectRegistry{
 		root:  newNode(nil, ""),
 		index: make(map[int64]map[int64]*node),
 	}
 }
 
-func (t *Trie) AddSub(sub string, s Sub) error {
+func (t *SubjectRegistry) AddSub(sub string, s Sub) error {
 	parts, err := validSub(sub)
 	if err != nil {
 		return err
@@ -62,7 +62,7 @@ func (t *Trie) AddSub(sub string, s Sub) error {
 	return nil
 }
 
-func (t *Trie) Lookup(sub string) ([]Sub, error) {
+func (t *SubjectRegistry) Lookup(sub string) ([]Sub, error) {
 	parts, err := validLookup(sub)
 	if err != nil {
 		return nil, err
@@ -93,7 +93,7 @@ func match(parts []string, n *node, res *[]Sub) {
 	}
 }
 
-func (t *Trie) RemoveSub(CID, SID int64) error {
+func (t *SubjectRegistry) RemoveSub(CID, SID int64) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 

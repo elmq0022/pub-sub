@@ -1,22 +1,22 @@
-package trie_test
+package subjectregistry_test
 
 import (
 	"sort"
 	"testing"
 
-	"github.com/elmq0022/pub-sub/internal/trie"
+	"github.com/elmq0022/pub-sub/internal/subjectregistry"
 )
 
-func makeSub(sid int64) trie.Sub {
-	return trie.Sub{SID: sid}
+func makeSub(sid int64) subjectregistry.Sub {
+	return subjectregistry.Sub{SID: sid}
 }
 
-func sorted(subs []trie.Sub) []trie.Sub {
+func sorted(subs []subjectregistry.Sub) []subjectregistry.Sub {
 	sort.Slice(subs, func(i, j int) bool { return subs[i].SID < subs[j].SID })
 	return subs
 }
 
-func mustLookup(t *testing.T, tr *trie.Trie, sub string) []trie.Sub {
+func mustLookup(t *testing.T, tr *subjectregistry.SubjectRegistry, sub string) []subjectregistry.Sub {
 	t.Helper()
 	subs, err := tr.Lookup(sub)
 	if err != nil {
@@ -26,7 +26,7 @@ func mustLookup(t *testing.T, tr *trie.Trie, sub string) []trie.Sub {
 }
 
 func TestExactMatch(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	tr.AddSub("foo.bar", makeSub(1))
 	tr.AddSub("foo.bar", makeSub(2))
 
@@ -37,7 +37,7 @@ func TestExactMatch(t *testing.T) {
 }
 
 func TestNoMatch(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	tr.AddSub("foo.bar", makeSub(1))
 
 	got := mustLookup(t, tr, "foo.baz")
@@ -47,7 +47,7 @@ func TestNoMatch(t *testing.T) {
 }
 
 func TestWildcardStar(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	tr.AddSub("foo.*", makeSub(10))
 
 	got := mustLookup(t, tr, "foo.bar")
@@ -67,7 +67,7 @@ func TestWildcardStar(t *testing.T) {
 }
 
 func TestWildcardGreaterThan(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	tr.AddSub("foo.>", makeSub(20))
 
 	for _, topic := range []string{"foo.bar", "foo.bar.baz", "foo.a.b.c"} {
@@ -84,19 +84,19 @@ func TestWildcardGreaterThan(t *testing.T) {
 }
 
 func TestSameSubTwoPatterns(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	tr.AddSub("foo.bar", makeSub(5))
 	tr.AddSub("foo.*", makeSub(5))
 
-	// trie returns all matches; dedup is the caller's responsibility
+	// subjectregistry returns all matches; dedup is the caller's responsibility
 	got := mustLookup(t, tr, "foo.bar")
 	if len(got) != 2 {
-		t.Fatalf("expected 2 matches (no trie-level dedup), got %v", got)
+		t.Fatalf("expected 2 matches (no subjectregistry-level dedup), got %v", got)
 	}
 }
 
 func TestMultipleSubscribers(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	tr.AddSub("a.b", makeSub(1))
 	tr.AddSub("a.*", makeSub(2))
 	tr.AddSub("a.>", makeSub(3))
@@ -116,7 +116,7 @@ func TestMultipleSubscribers(t *testing.T) {
 func TestRootGreaterThan(t *testing.T) {
 	topics := []string{"foo", "foo.bar", "foo.bar.baz", "a.b.c.d"}
 
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	tr.AddSub(">", makeSub(99))
 
 	for _, topic := range topics {
@@ -127,17 +127,17 @@ func TestRootGreaterThan(t *testing.T) {
 	}
 
 	// Without > subscribed the same topics must return no matches.
-	empty := trie.NewTrie()
+	empty := subjectregistry.NewSubjectRegistry()
 	for _, topic := range topics {
 		got := mustLookup(t, empty, topic)
 		if len(got) != 0 {
-			t.Fatalf("empty trie, topic %q: got %v, want []", topic, got)
+			t.Fatalf("empty subjectregistry, topic %q: got %v, want []", topic, got)
 		}
 	}
 }
 
 func TestLookupInvalidSub(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	_, err := tr.Lookup("")
 	if err == nil {
 		t.Fatal("expected error for empty subject, got nil")
@@ -146,18 +146,18 @@ func TestLookupInvalidSub(t *testing.T) {
 
 // helpers
 
-func makeSubFull(cid, sid int64) trie.Sub {
-	return trie.Sub{CID: cid, SID: sid}
+func makeSubFull(cid, sid int64) subjectregistry.Sub {
+	return subjectregistry.Sub{CID: cid, SID: sid}
 }
 
-func mustAddSub(t *testing.T, tr *trie.Trie, pattern string, s trie.Sub) {
+func mustAddSub(t *testing.T, tr *subjectregistry.SubjectRegistry, pattern string, s subjectregistry.Sub) {
 	t.Helper()
 	if err := tr.AddSub(pattern, s); err != nil {
 		t.Fatalf("AddSub(%q, %v) unexpected error: %v", pattern, s, err)
 	}
 }
 
-func mustRemoveSub(t *testing.T, tr *trie.Trie, cid, sid int64) {
+func mustRemoveSub(t *testing.T, tr *subjectregistry.SubjectRegistry, cid, sid int64) {
 	t.Helper()
 	if err := tr.RemoveSub(cid, sid); err != nil {
 		t.Fatalf("RemoveSub(%d, %d) unexpected error: %v", cid, sid, err)
@@ -167,7 +167,7 @@ func mustRemoveSub(t *testing.T, tr *trie.Trie, cid, sid int64) {
 // --- RemoveSub error cases ---
 
 func TestRemoveSub_UnknownCID(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	err := tr.RemoveSub(99, 1)
 	if err == nil {
 		t.Fatal("expected error for unknown CID, got nil")
@@ -175,7 +175,7 @@ func TestRemoveSub_UnknownCID(t *testing.T) {
 }
 
 func TestRemoveSub_UnknownSID(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	mustAddSub(t, tr, "foo.bar", makeSubFull(1, 1))
 	err := tr.RemoveSub(1, 99)
 	if err == nil {
@@ -184,7 +184,7 @@ func TestRemoveSub_UnknownSID(t *testing.T) {
 }
 
 func TestRemoveSub_SecondRemoveFails(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	mustAddSub(t, tr, "foo.bar", makeSubFull(1, 1))
 	mustRemoveSub(t, tr, 1, 1)
 	if err := tr.RemoveSub(1, 1); err == nil {
@@ -195,7 +195,7 @@ func TestRemoveSub_SecondRemoveFails(t *testing.T) {
 // --- basic removal ---
 
 func TestRemoveSub_SubNoLongerMatches(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	mustAddSub(t, tr, "foo.bar", makeSubFull(1, 1))
 	mustRemoveSub(t, tr, 1, 1)
 
@@ -206,7 +206,7 @@ func TestRemoveSub_SubNoLongerMatches(t *testing.T) {
 }
 
 func TestRemoveSub_OtherSubsAtSameNodeUnaffected(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	mustAddSub(t, tr, "foo.bar", makeSubFull(1, 1))
 	mustAddSub(t, tr, "foo.bar", makeSubFull(2, 2))
 	mustRemoveSub(t, tr, 1, 1)
@@ -218,7 +218,7 @@ func TestRemoveSub_OtherSubsAtSameNodeUnaffected(t *testing.T) {
 }
 
 func TestRemoveSub_OneSubOfClientLeavesOtherIntact(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	// same client (CID=1), two different subscriptions
 	mustAddSub(t, tr, "foo.bar", makeSubFull(1, 1))
 	mustAddSub(t, tr, "foo.baz", makeSubFull(1, 2))
@@ -236,7 +236,7 @@ func TestRemoveSub_OneSubOfClientLeavesOtherIntact(t *testing.T) {
 // --- index management ---
 
 func TestRemoveSub_LastSIDForCIDAllowsOtherClients(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	mustAddSub(t, tr, "a.b", makeSubFull(1, 10))
 	mustAddSub(t, tr, "a.b", makeSubFull(2, 20))
 
@@ -256,7 +256,7 @@ func TestRemoveSub_LastSIDForCIDAllowsOtherClients(t *testing.T) {
 }
 
 func TestRemoveSub_RemainingSIDsForSameCIDStillIndexed(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	mustAddSub(t, tr, "a.b", makeSubFull(1, 1))
 	mustAddSub(t, tr, "a.c", makeSubFull(1, 2))
 
@@ -271,7 +271,7 @@ func TestRemoveSub_RemainingSIDsForSameCIDStillIndexed(t *testing.T) {
 // --- node pruning ---
 
 func TestRemoveSub_PrunesLeafNode(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	mustAddSub(t, tr, "a.b.c", makeSubFull(1, 1))
 	mustRemoveSub(t, tr, 1, 1)
 
@@ -284,7 +284,7 @@ func TestRemoveSub_PrunesLeafNode(t *testing.T) {
 }
 
 func TestRemoveSub_PrunesChainOfEmptyNodes(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	mustAddSub(t, tr, "a.b.c.d", makeSubFull(1, 1))
 	mustRemoveSub(t, tr, 1, 1)
 
@@ -301,7 +301,7 @@ func TestRemoveSub_PrunesChainOfEmptyNodes(t *testing.T) {
 }
 
 func TestRemoveSub_NoPruneWhenNodeHasChildren(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	// a.b has a sub AND a child (a.b.c)
 	mustAddSub(t, tr, "a.b", makeSubFull(1, 1))
 	mustAddSub(t, tr, "a.b.c", makeSubFull(2, 2))
@@ -316,7 +316,7 @@ func TestRemoveSub_NoPruneWhenNodeHasChildren(t *testing.T) {
 }
 
 func TestRemoveSub_NoPruneWhenOtherSubsRemain(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	mustAddSub(t, tr, "a.b", makeSubFull(1, 1))
 	mustAddSub(t, tr, "a.b", makeSubFull(2, 2))
 
@@ -332,7 +332,7 @@ func TestRemoveSub_NoPruneWhenOtherSubsRemain(t *testing.T) {
 // --- wildcard subjects ---
 
 func TestRemoveSub_WildcardStar(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	mustAddSub(t, tr, "foo.*", makeSubFull(1, 1))
 	mustAddSub(t, tr, "foo.*", makeSubFull(2, 2))
 	mustRemoveSub(t, tr, 1, 1)
@@ -344,7 +344,7 @@ func TestRemoveSub_WildcardStar(t *testing.T) {
 }
 
 func TestRemoveSub_WildcardStar_NoMatchAfterOnlySubRemoved(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	mustAddSub(t, tr, "foo.*", makeSubFull(1, 1))
 	mustRemoveSub(t, tr, 1, 1)
 
@@ -355,7 +355,7 @@ func TestRemoveSub_WildcardStar_NoMatchAfterOnlySubRemoved(t *testing.T) {
 }
 
 func TestRemoveSub_WildcardGreaterThan(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	mustAddSub(t, tr, "foo.>", makeSubFull(1, 1))
 	mustAddSub(t, tr, "foo.>", makeSubFull(2, 2))
 	mustRemoveSub(t, tr, 1, 1)
@@ -369,7 +369,7 @@ func TestRemoveSub_WildcardGreaterThan(t *testing.T) {
 }
 
 func TestRemoveSub_WildcardGreaterThan_NoMatchAfterOnlySubRemoved(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	mustAddSub(t, tr, "foo.>", makeSubFull(1, 1))
 	mustRemoveSub(t, tr, 1, 1)
 
@@ -384,7 +384,7 @@ func TestRemoveSub_WildcardGreaterThan_NoMatchAfterOnlySubRemoved(t *testing.T) 
 // --- re-add after remove ---
 
 func TestRemoveSub_ReAddAfterRemoveYieldsOneResult(t *testing.T) {
-	tr := trie.NewTrie()
+	tr := subjectregistry.NewSubjectRegistry()
 	mustAddSub(t, tr, "x.y", makeSubFull(1, 1))
 	mustRemoveSub(t, tr, 1, 1)
 	mustAddSub(t, tr, "x.y", makeSubFull(1, 1))
