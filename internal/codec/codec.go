@@ -7,13 +7,26 @@ import (
 )
 
 type Codec struct {
-	rw io.ReadWriter
+	brw *bufio.ReadWriter
 }
 
-func NewCodec(rw io.ReadWriter) *Codec {
-	return &Codec{
-		rw: rw,
+const maxPayloadBytes int64 = 8 * 1024 * 1024
+
+func NewCodec(rw io.ReadWriter) (*Codec, error) {
+	if rw == nil {
+		return nil, errors.New("nil read writer received")
 	}
+
+	brw, ok := rw.(*bufio.ReadWriter)
+	if !ok {
+		brw = bufio.NewReadWriter(
+			bufio.NewReader(rw),
+			bufio.NewWriter(rw),
+		)
+	}
+	return &Codec{
+		brw: brw,
+	}, nil
 }
 
 type scratchSpace struct {
@@ -24,26 +37,12 @@ type scratchSpace struct {
 	nBytes  []byte
 }
 
-var ss = scratchSpace{}
-
 func (c *Codec) Decode() (Command, error) {
-	ss = scratchSpace{}
-
-	if c.rw == nil {
-		return nil, errors.New("got a nil read write")
-	}
-
-	brw, ok := c.rw.(*bufio.ReadWriter)
-	if !ok {
-		brw = bufio.NewReadWriter(
-			bufio.NewReader(c.rw),
-			bufio.NewWriter(c.rw),
-		)
-	}
+	ss := scratchSpace{}
 
 	state := ST_START
 	for {
-		b, err := brw.ReadByte()
+		b, err := c.brw.ReadByte()
 		if err != nil {
 			return nil, err
 		}
@@ -78,13 +77,16 @@ func (c *Codec) Decode() (Command, error) {
 		case ST_PUB_NUM_BYTES:
 			ss.nBytes = append(ss.nBytes, b)
 		case ST_PUB_PAYLOAD:
-			size := bytesToInt64(ss.nBytes)
-			if size < 2 {
+			size, err := parseDigitsInt64(ss.nBytes)
+			if err != nil {
 				return nil, errors.New("bad payload")
+			}
+			if size > maxPayloadBytes {
+				return nil, errors.New("payload too large")
 			}
 
 			ss.Msg = make([]byte, size)
-			n, err := io.ReadFull(brw, ss.Msg)
+			n, err := io.ReadFull(c.brw, ss.Msg)
 			if err != nil {
 				return nil, err
 			}
@@ -93,16 +95,10 @@ func (c *Codec) Decode() (Command, error) {
 				return nil, errors.New("did not get full payload")
 			}
 
-			ss.Msg = ss.Msg[:len(ss.Msg)]
-
-			if c, err := brw.ReadByte(); c != '\r' || err != nil {
+			if c, err := c.brw.ReadByte(); c != '\r' || err != nil {
 				return nil, errors.New("bad payload")
 			}
-			if c, err := brw.ReadByte(); c != '\n' || err != nil {
-				return nil, errors.New("bad payload")
-			}
-
-			state = ST_DONE
+			state = ST_CR_END
 
 		case ST_UNSUB_SID:
 			ss.SID = append(ss.SID, b)
@@ -121,29 +117,46 @@ func createCmd(ss scratchSpace) (Command, error) {
 	case KindPub:
 		return Pub{
 			Subject: ss.Subject,
-			Len:     int64(len(ss.Subject)),
+			Len:     int64(len(ss.Msg)),
 			Msg:     ss.Msg,
 		}, nil
 	case KindSub:
+		sid, err := parseDigitsInt64(ss.SID)
+		if err != nil {
+			return nil, errors.New("bad sid")
+		}
 		return Sub{
 			Subject: ss.Subject,
-			SID:     bytesToInt64(ss.SID),
+			SID:     sid,
 		}, nil
 	case KindUnsub:
+		sid, err := parseDigitsInt64(ss.SID)
+		if err != nil {
+			return nil, errors.New("bad sid")
+		}
 		return Unsub{
-			SID: bytesToInt64(ss.SID),
+			SID: sid,
 		}, nil
 	default:
 		return nil, errors.New("kind not implemented")
 	}
 }
 
-// NOTE: transition table ensures the bytes are all digits
-func bytesToInt64(bytes []byte) int64 {
-	value := int64(0)
-	for _, b := range bytes {
-		value *= 10
-		value += int64(b - '0')
+func parseDigitsInt64(bytes []byte) (int64, error) {
+	if len(bytes) == 0 {
+		return 0, errors.New("empty digits")
 	}
-	return value
+
+	var n int64
+	for _, b := range bytes {
+		if b < '0' || b > '9' {
+			return 0, errors.New("invalid digit")
+		}
+		d := int64(b - '0')
+		if n > (9223372036854775807-d)/10 {
+			return 0, errors.New("int64 overflow")
+		}
+		n = n*10 + d
+	}
+	return n, nil
 }
