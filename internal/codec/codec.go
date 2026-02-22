@@ -2,7 +2,6 @@ package codec
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"io"
 )
@@ -17,7 +16,15 @@ func NewCodec(rw io.ReadWriter) *Codec {
 	}
 }
 
+type scratchSpace struct {
+	Kind Kind
+}
+
+var ss = scratchSpace{}
+
 func (c *Codec) Decode() (Command, error) {
+	ss = scratchSpace{}
+
 	if c.rw == nil {
 		return nil, errors.New("got a nil read write")
 	}
@@ -30,24 +37,58 @@ func (c *Codec) Decode() (Command, error) {
 		)
 	}
 
-	line, err := brw.ReadBytes('\n')
-	if err != nil {
-		return nil, err
-	}
-	fields := bytes.Fields(line)
+	state := ST_START
+	for {
+		b, err := brw.ReadByte()
+		if err != nil {
+			return nil, err
+		}
 
-	switch string(fields[0]) {
-	case "PING":
-		return Ping{}, nil
-	case "PONG":
-		return Pong{}, nil
-	case "CONNECT":
+		state = transitionTable[state][b]
+
+		switch state {
+		case ST_ERROR:
+			return nil, errors.New("bad parse")
+		case ST_DONE:
+			cmd, err := createCmd(ss)
+			return cmd, err
+		case ST_CMD_CONNECT:
+			ss.Kind = KindConnect
+			brw.Flush()
+		case ST_CMD_PING:
+			ss.Kind = KindPing
+			brw.Flush()
+		case ST_CMD_PONG:
+			ss.Kind = KindPong
+			brw.Flush()
+		case ST_CMD_SUB:
+			ss.Kind = KindSub
+			brw.Flush()
+		case ST_CMD_PUB:
+			ss.Kind = KindPub
+			brw.Flush()
+		case ST_CMD_UNSUB:
+			ss.Kind = KindUnsub
+			brw.Flush()
+		}
+	}
+}
+
+func createCmd(ss scratchSpace) (Command, error) {
+	switch ss.Kind {
+	case KindConnect:
 		return Connect{}, nil
-	case "PUB":
+	case KindPing:
+		return Ping{}, nil
+	case KindPong:
+		return Pong{}, nil
+	case KindPub:
 		return Pub{}, nil
-	case "SUB":
+	case KindSub:
 		return Sub{}, nil
+	case KindUnsub:
+		return Unsub{}, nil
 	default:
-		return nil, errors.New("no command")
+		return nil, errors.New("kind not implemented")
 	}
 }
