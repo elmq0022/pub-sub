@@ -277,6 +277,77 @@ func TestCodecDecodeLongRunMixedCommands(t *testing.T) {
 	}
 }
 
+func BenchmarkCodecDecode(b *testing.B) {
+	benchmarks := []struct {
+		name  string
+		input string
+	}{
+		{name: "ping", input: "PING\r\n"},
+		{name: "sub", input: "SUB foo.bar 42\r\n"},
+		{name: "pub_small", input: "PUB foo.bar 5\r\nhello\r\n"},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			var stream bytes.Buffer
+			stream.Grow(len(bm.input) * b.N)
+			for i := 0; i < b.N; i++ {
+				_, _ = stream.WriteString(bm.input)
+			}
+
+			c, err := NewCodec(bytes.NewBuffer(stream.Bytes()))
+			if err != nil {
+				b.Fatalf("NewCodec() error: %v", err)
+			}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				if _, err := c.Decode(); err != nil {
+					b.Fatalf("Decode() error at iteration %d: %v", i, err)
+				}
+			}
+		})
+	}
+}
+
+func TestCodecDecodeAllocations(t *testing.T) {
+	allocsPerDecode := func(t *testing.T, input string, runs int) float64 {
+		t.Helper()
+
+		var stream bytes.Buffer
+		stream.Grow(len(input) * (runs + 1))
+		for i := 0; i < runs+1; i++ {
+			_, _ = stream.WriteString(input)
+		}
+
+		c, err := NewCodec(bytes.NewBuffer(stream.Bytes()))
+		require.NoError(t, err)
+
+		return testing.AllocsPerRun(runs, func() {
+			if _, err := c.Decode(); err != nil {
+				panic(err)
+			}
+		})
+	}
+
+	t.Run("ping", func(t *testing.T) {
+		allocs := allocsPerDecode(t, "PING\r\n", 1000)
+		assert.LessOrEqual(t, allocs, float64(1), "expected near-zero allocations for PING decode")
+	})
+
+	t.Run("sub", func(t *testing.T) {
+		allocs := allocsPerDecode(t, "SUB foo.bar 42\r\n", 1000)
+		assert.LessOrEqual(t, allocs, float64(4), "unexpected allocation growth for SUB decode")
+	})
+
+	t.Run("pub small payload", func(t *testing.T) {
+		allocs := allocsPerDecode(t, "PUB foo 5\r\nhello\r\n", 1000)
+		assert.LessOrEqual(t, allocs, float64(5), "unexpected allocation growth for PUB decode")
+	})
+}
+
 func FuzzCodecDecodeDoesNotPanic(f *testing.F) {
 	f.Add("PING\r\n")
 	f.Add("PUB foo 3\r\nhey\r\n")
