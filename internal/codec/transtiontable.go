@@ -192,5 +192,19 @@ func buildTransitionTable() [nStates][256]STATE {
 	t[ST_PUB_NUM_BYTES]['\r'] = ST_PUB_CR
 	t[ST_PUB_CR]['\n'] = ST_PUB_PAYLOAD
 
+	// UNSUB <sid>\r\n
+	t[ST_START]['U'] = ST_CMD_U
+	t[ST_CMD_U]['N'] = ST_CMD_UN
+	t[ST_CMD_UN]['S'] = ST_CMD_UNS
+	t[ST_CMD_UNS]['U'] = ST_CMD_UNSU
+	t[ST_CMD_UNSU]['B'] = ST_CMD_UNSUB
+	t[ST_CMD_UNSUB][' '] = ST_UNSUB_SPACE
+
+	for _, c := range digits {
+		t[ST_UNSUB_SPACE][c] = ST_UNSUB_SID
+		t[ST_UNSUB_SID][c] = ST_UNSUB_SID
+	}
+	t[ST_UNSUB_SID]['\r'] = ST_CR_END
+
 	return t
 }
