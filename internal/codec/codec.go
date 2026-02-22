@@ -103,6 +103,9 @@ func (c *Codec) Decode() (Command, error) {
 			}
 
 			state = ST_DONE
+
+		case ST_UNSUB_SID:
+			ss.SID = append(ss.SID, b)
 		}
 	}
 }
