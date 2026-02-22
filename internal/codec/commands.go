@@ -47,9 +47,3 @@ type Unsub struct {
 }
 
 func (Unsub) Kind() Kind { return KindUnsub }
-
-// CONNECT {}
-// PING
-// PONG
-// SUB <subject> <sid>\r\n
-// PUB <subject> <#bytes>\r\n[payload]\r\n
