@@ -1,6 +1,10 @@
 package codec
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func walkTransitionTable(input string) (STATE, int) {
 	state := ST_START
@@ -36,11 +40,9 @@ func TestTransitionTableAcceptsImplementedProtocols(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, failIdx := walkTransitionTable(tt.input)
 			if failIdx != -1 {
-				t.Fatalf("input rejected at byte %d (%q)", failIdx, tt.input[failIdx])
+				assert.Failf(t, "input rejected", "input rejected at byte %d (%q)", failIdx, tt.input[failIdx])
 			}
-			if got != tt.wantState {
-				t.Fatalf("final state = %v, want %v", got, tt.wantState)
-			}
+			assert.Equal(t, tt.wantState, got)
 		})
 	}
 }
@@ -66,9 +68,7 @@ func TestTransitionTableRejectsUnsupportedOrMalformedProtocols(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, failIdx := walkTransitionTable(tt.input)
-			if failIdx == -1 {
-				t.Fatalf("expected rejection, but parser ended in state %v", got)
-			}
+			assert.NotEqualf(t, -1, failIdx, "expected rejection, but parser ended in state %v", got)
 		})
 	}
 }

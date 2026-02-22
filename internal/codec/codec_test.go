@@ -214,14 +214,7 @@ func TestCodecDecodePayloadBoundaries(t *testing.T) {
 
 		got, err := c.Decode()
 		require.NoError(t, err)
-
-		pub, ok := got.(Pub)
-		require.True(t, ok)
-		assert.Equal(t, []byte("foo"), pub.Subject)
-		assert.Equal(t, maxPayloadBytes, pub.Len)
-		require.Len(t, pub.Msg, int(maxPayloadBytes))
-		assert.Equal(t, byte('a'), pub.Msg[0])
-		assert.Equal(t, byte('a'), pub.Msg[len(pub.Msg)-1])
+		assert.Equal(t, Pub{Subject: []byte("foo"), Len: maxPayloadBytes, Msg: payload}, got)
 	})
 
 	t.Run("max payload plus one rejected", func(t *testing.T) {
