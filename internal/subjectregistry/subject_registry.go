@@ -2,7 +2,6 @@ package subjectregistry
 
 import (
 	"errors"
-	"sync"
 )
 
 type client struct{}
@@ -28,7 +27,6 @@ func newNode(parent *node, key string) *node {
 }
 
 type SubjectRegistry struct {
-	mu    sync.RWMutex
 	root  *node
 	index map[int64]map[int64]*node
 }
@@ -45,8 +43,6 @@ func (t *SubjectRegistry) AddSub(sub string, s Sub) error {
 	if err != nil {
 		return err
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	cur := t.root
 	for _, part := range parts {
 		if cur.children[part] == nil {
@@ -67,8 +63,6 @@ func (t *SubjectRegistry) Lookup(sub string) ([]Sub, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.mu.RLock()
-	defer t.mu.RUnlock()
 	var res []Sub
 	match(parts, t.root, &res)
 	return res, nil
@@ -94,9 +88,6 @@ func match(parts []string, n *node, res *[]Sub) {
 }
 
 func (t *SubjectRegistry) RemoveSub(CID, SID int64) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
 	if t.index[CID] == nil || t.index[CID][SID] == nil {
 		return errors.New("no subscription")
 	}
