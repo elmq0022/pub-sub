@@ -2,15 +2,11 @@ package subjectregistry
 
 import (
 	"errors"
-	"strings"
 )
 
-type client struct{}
-
 type Sub struct {
-	CID    int64
-	SID    int64
-	Client *client
+	CID int64
+	SID int64
 }
 
 type node struct {
@@ -46,9 +42,13 @@ func NewSubjectRegistry() *SubjectRegistry {
 }
 
 func (t *SubjectRegistry) AddSub(subject string, s Sub) error {
+	parts, err := validSub(subject)
+	if err != nil {
+		return err
+	}
+
 	cur := t.root
-	parts := strings.SplitSeq(subject, ".")
-	for part := range parts {
+	for _, part := range parts {
 		if cur.children[part] == nil {
 			cur.children[part] = newNode(cur, part)
 		}
@@ -63,7 +63,11 @@ func (t *SubjectRegistry) AddSub(subject string, s Sub) error {
 }
 
 func (t *SubjectRegistry) Lookup(subject string) ([]Sub, error) {
-	parts := strings.Split(subject, ".")
+	parts, err := validLookup(subject)
+	if err != nil {
+		return nil, err
+	}
+
 	var res []Sub
 	match(parts, t.root, &res)
 	return res, nil

@@ -56,11 +56,12 @@ func (b *Broker) Run() {
 				continue
 			}
 
-			b.r.AddSub(string(subCmd.Subject), subjectregistry.Sub{
-				CID:    int64,
-				SID:    int64,
-				Client: *subjectregistry.client,
-			})
+			if err := b.r.AddSub(string(subCmd.Subject), subjectregistry.Sub{
+				CID: cid,
+				SID: subCmd.SID,
+			}); err != nil {
+				continue
+			}
 		case codec.KindPub:
 			pubCmd, ok := cmd.(codec.Pub)
 			if !ok {
@@ -88,8 +89,9 @@ func (b *Broker) Run() {
 		case codec.KindUnsub:
 			unsubCmd, ok := cmd.(codec.Unsub)
 			if !ok {
+				continue
 			}
-			b.r.RemoveSub(cid, unsubCmd.SID)
+			_ = b.r.RemoveSub(cid, unsubCmd.SID)
 		default:
 		}
 	}
