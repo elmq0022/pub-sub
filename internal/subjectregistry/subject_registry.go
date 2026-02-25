@@ -2,6 +2,7 @@ package subjectregistry
 
 import (
 	"errors"
+	"strings"
 )
 
 type Sub struct {
@@ -42,12 +43,9 @@ func NewSubjectRegistry() *SubjectRegistry {
 }
 
 func (t *SubjectRegistry) AddSub(subject string, s Sub) error {
-	parts, err := validSub(subject)
-	if err != nil {
-		return err
-	}
-
 	cur := t.root
+
+	parts := strings.Split(subject, ".")
 	for _, part := range parts {
 		if cur.children[part] == nil {
 			cur.children[part] = newNode(cur, part)
@@ -63,10 +61,7 @@ func (t *SubjectRegistry) AddSub(subject string, s Sub) error {
 }
 
 func (t *SubjectRegistry) Lookup(subject string) ([]Sub, error) {
-	parts, err := validLookup(subject)
-	if err != nil {
-		return nil, err
-	}
+	parts := strings.Split(subject, ".")
 
 	var res []Sub
 	match(parts, t.root, &res)

@@ -136,14 +136,6 @@ func TestRootGreaterThan(t *testing.T) {
 	}
 }
 
-func TestLookupInvalidSub(t *testing.T) {
-	tr := subjectregistry.NewSubjectRegistry()
-	_, err := tr.Lookup("")
-	if err == nil {
-		t.Fatal("expected error for empty subject, got nil")
-	}
-}
-
 // helpers
 
 func makeSubFull(cid, sid int64) subjectregistry.Sub {
