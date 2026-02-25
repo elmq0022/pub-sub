@@ -2,6 +2,7 @@ package subjectregistry
 
 import (
 	"errors"
+	"strings"
 )
 
 type client struct{}
@@ -31,6 +32,12 @@ type SubjectRegistry struct {
 	index map[int64]map[int64]*node
 }
 
+type Registry interface {
+	AddSub(subject string, s Sub) error
+	Lookup(subject string) ([]Sub, error)
+	RemoveSub(CID, SID int64) error
+}
+
 func NewSubjectRegistry() *SubjectRegistry {
 	return &SubjectRegistry{
 		root:  newNode(nil, ""),
@@ -38,13 +45,10 @@ func NewSubjectRegistry() *SubjectRegistry {
 	}
 }
 
-func (t *SubjectRegistry) AddSub(sub string, s Sub) error {
-	parts, err := validSub(sub)
-	if err != nil {
-		return err
-	}
+func (t *SubjectRegistry) AddSub(subject string, s Sub) error {
 	cur := t.root
-	for _, part := range parts {
+	parts := strings.SplitSeq(subject, ".")
+	for part := range parts {
 		if cur.children[part] == nil {
 			cur.children[part] = newNode(cur, part)
 		}
@@ -58,11 +62,8 @@ func (t *SubjectRegistry) AddSub(sub string, s Sub) error {
 	return nil
 }
 
-func (t *SubjectRegistry) Lookup(sub string) ([]Sub, error) {
-	parts, err := validLookup(sub)
-	if err != nil {
-		return nil, err
-	}
+func (t *SubjectRegistry) Lookup(subject string) ([]Sub, error) {
+	parts := strings.Split(subject, ".")
 	var res []Sub
 	match(parts, t.root, &res)
 	return res, nil

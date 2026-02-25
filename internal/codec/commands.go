@@ -37,7 +37,7 @@ func (Sub) Kind() Kind { return KindSub }
 type Pub struct {
 	Subject []byte
 	Len     int64
-	Msg     []byte
+	Payload []byte
 }
 
 func (Pub) Kind() Kind { return KindPub }

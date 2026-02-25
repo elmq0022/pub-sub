@@ -50,7 +50,7 @@ func TestCodecDecodeSuccess(t *testing.T) {
 		{name: "pong", input: "PONG\r\n", want: Pong{}},
 		{name: "sub", input: "SUB foo.bar 42\r\n", want: Sub{Subject: []byte("foo.bar"), SID: 42}},
 		{name: "unsub", input: "UNSUB 9001\r\n", want: Unsub{SID: 9001}},
-		{name: "pub", input: "PUB foo.bar 5\r\nhello\r\n", want: Pub{Subject: []byte("foo.bar"), Len: 5, Msg: []byte("hello")}},
+		{name: "pub", input: "PUB foo.bar 5\r\nhello\r\n", want: Pub{Subject: []byte("foo.bar"), Len: 5, Payload: []byte("hello")}},
 	}
 
 	for _, tt := range tests {
@@ -100,7 +100,7 @@ func TestCreateCmd(t *testing.T) {
 		{name: "connect", ss: scratchSpace{Kind: KindConnect}, want: Connect{}},
 		{name: "ping", ss: scratchSpace{Kind: KindPing}, want: Ping{}},
 		{name: "pong", ss: scratchSpace{Kind: KindPong}, want: Pong{}},
-		{name: "pub", ss: scratchSpace{Kind: KindPub, Subject: []byte("s"), Msg: []byte("abc")}, want: Pub{Subject: []byte("s"), Len: 3, Msg: []byte("abc")}},
+		{name: "pub", ss: scratchSpace{Kind: KindPub, Subject: []byte("s"), Msg: []byte("abc")}, want: Pub{Subject: []byte("s"), Len: 3, Payload: []byte("abc")}},
 		{name: "sub bad sid", ss: scratchSpace{Kind: KindSub, Subject: []byte("s"), SID: []byte("x")}, errText: "bad sid"},
 		{name: "unsub bad sid", ss: scratchSpace{Kind: KindUnsub, SID: []byte("x")}, errText: "bad sid"},
 		{name: "unknown kind", ss: scratchSpace{Kind: Kind(255)}, errText: "kind not implemented"},
@@ -167,7 +167,7 @@ func TestCodecDecodeSequentialCommands(t *testing.T) {
 		Ping{},
 		Pong{},
 		Sub{Subject: []byte("foo"), SID: 7},
-		Pub{Subject: []byte("foo"), Len: 5, Msg: []byte("hello")},
+		Pub{Subject: []byte("foo"), Len: 5, Payload: []byte("hello")},
 		Unsub{SID: 7},
 		Connect{},
 	}
@@ -190,7 +190,7 @@ func TestCodecDecodePayloadBoundaries(t *testing.T) {
 
 		got, err := c.Decode()
 		require.NoError(t, err)
-		assert.Equal(t, Pub{Subject: []byte("foo"), Len: 0, Msg: []byte{}}, got)
+		assert.Equal(t, Pub{Subject: []byte("foo"), Len: 0, Payload: []byte{}}, got)
 	})
 
 	t.Run("one byte payload", func(t *testing.T) {
@@ -199,7 +199,7 @@ func TestCodecDecodePayloadBoundaries(t *testing.T) {
 
 		got, err := c.Decode()
 		require.NoError(t, err)
-		assert.Equal(t, Pub{Subject: []byte("foo"), Len: 1, Msg: []byte("a")}, got)
+		assert.Equal(t, Pub{Subject: []byte("foo"), Len: 1, Payload: []byte("a")}, got)
 	})
 
 	t.Run("max payload bytes", func(t *testing.T) {
@@ -214,7 +214,7 @@ func TestCodecDecodePayloadBoundaries(t *testing.T) {
 
 		got, err := c.Decode()
 		require.NoError(t, err)
-		assert.Equal(t, Pub{Subject: []byte("foo"), Len: maxPayloadBytes, Msg: payload}, got)
+		assert.Equal(t, Pub{Subject: []byte("foo"), Len: maxPayloadBytes, Payload: payload}, got)
 	})
 
 	t.Run("max payload plus one rejected", func(t *testing.T) {
@@ -237,7 +237,7 @@ func TestCodecDecodeWithChunkedReader(t *testing.T) {
 
 	got, err := c.Decode()
 	require.NoError(t, err)
-	assert.Equal(t, Pub{Subject: []byte("foo"), Len: 5, Msg: []byte("hello")}, got)
+	assert.Equal(t, Pub{Subject: []byte("foo"), Len: 5, Payload: []byte("hello")}, got)
 }
 
 func TestCodecDecodeLongRunMixedCommands(t *testing.T) {
@@ -255,7 +255,7 @@ func TestCodecDecodeLongRunMixedCommands(t *testing.T) {
 			expected = append(expected, Pub{
 				Subject: []byte(subject),
 				Len:     int64(len(msg)),
-				Msg:     []byte(msg),
+				Payload: []byte(msg),
 			})
 		}
 	}

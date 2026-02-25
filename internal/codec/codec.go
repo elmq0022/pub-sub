@@ -118,7 +118,7 @@ func createCmd(ss scratchSpace) (Command, error) {
 		return Pub{
 			Subject: ss.Subject,
 			Len:     int64(len(ss.Msg)),
-			Msg:     ss.Msg,
+			Payload: ss.Msg,
 		}, nil
 	case KindSub:
 		sid, err := parseDigitsInt64(ss.SID)
