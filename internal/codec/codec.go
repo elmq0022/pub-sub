@@ -37,7 +37,7 @@ type scratchSpace struct {
 	nBytes  []byte
 }
 
-func (c *Codec) Decode() (Command, error) {
+func (c *Codec) Decode() (InboundCommands, error) {
 	ss := scratchSpace{}
 
 	state := ST_START
@@ -106,7 +106,7 @@ func (c *Codec) Decode() (Command, error) {
 	}
 }
 
-func createCmd(ss scratchSpace) (Command, error) {
+func createCmd(ss scratchSpace) (InboundCommands, error) {
 	switch ss.Kind {
 	case KindConnect:
 		return Connect{}, nil
