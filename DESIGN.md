@@ -64,7 +64,7 @@ flowchart LR
 - Single consumer of `brokerInbox <-chan CommandEnvelope`.
 - Owns:
   - subject registry / trie.
-  - connection directory (`CID -> clientRef`).
+  - connection directory (`CID -> ClientSession`).
   - optional per-client metadata (subscriptions, stats).
 - Executes command semantics:
   - `SUB`: add subscription.
@@ -80,9 +80,19 @@ type CommandEnvelope struct {
     Cmd   codec.Command
 }
 
-type ClientRef struct {
+// Stored in subject registry / trie.
+// Routing metadata only: no socket or channel pointers.
+type Sub struct {
+    CID int64
+    SID int64
+}
+
+// Broker-owned per-connection runtime state.
+// Transport details stay outside the trie.
+type ClientSession struct {
     CID      int64
     Outbound chan<- OutboundMsg
+    // Conn net.Conn // optional: owned by supervisor/writer side only
 }
 
 type OutboundMsg struct {
@@ -93,8 +103,9 @@ type OutboundMsg struct {
 ```
 
 Notes:
-- The trie should reference a `ClientRef` (or `CID` resolved via broker map), not `net.Conn`.
-- Keep socket details isolated to writer actor.
+- The trie stores `Sub{CID,SID}` only, never `net.Conn` or outbound channels.
+- Broker resolves `CID -> ClientSession` and enqueues onto that session's writer mailbox.
+- Keep socket details isolated to connection supervisor/writer actor.
 
 ## End-to-End Flow
 ```mermaid
@@ -107,19 +118,21 @@ sequenceDiagram
 
     C->>R: SUB foo.* 1
     R->>B: CommandEnvelope{CID, SUB}
-    B->>T: AddSub(subject, cid, sid, clientRef)
+    B->>T: AddSub(subject, cid, sid)
 
     C->>R: PUB foo.bar 5\r\nhello
     R->>B: CommandEnvelope{CID, PUB}
     B->>T: Lookup(foo.bar)
     T-->>B: [matching subs]
-    B->>W: OutboundMsg{subject,sid,payload}
+    B->>B: resolve sub.CID -> ClientSession
+    B->>W: enqueue OutboundMsg{subject,sid,payload}
     W-->>C: MSG foo.bar 1 5\r\nhello\r\n
 ```
 
 ## State Ownership and Locking
 - Broker-owned state is single-threaded: no `sync.Mutex` required.
 - If `SubjectRegistry` remains package-level reusable, keep locking optional or document broker-only usage.
+- Connection/session state is broker-owned by identity (`CID`) and may be updated on reconnect without touching trie entries.
 
 ## Backpressure and Slow Consumers
 Decision required:
@@ -156,7 +169,8 @@ On connection close/error:
 - `internal/codec` already decodes commands (`PING`, `PONG`, `CONNECT`, `SUB`, `UNSUB`, `PUB`).
 - `internal/subjectregistry` already supports wildcard lookup and `(CID,SID)` removal.
 - Needed refactor:
-  - Replace placeholder `subjectregistry.client` with real broker-facing `ClientRef` concept.
+  - Keep subject registry entries as plain `Sub{CID,SID}` (no transport pointers).
+  - Add/maintain broker client directory `map[CID]*ClientSession` for writer mailbox routing.
   - Move synchronization responsibility to broker loop (and remove internal lock if broker-owned).
 
 ## Risks and Design Issues to Resolve
