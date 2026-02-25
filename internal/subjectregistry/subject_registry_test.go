@@ -156,6 +156,13 @@ func mustRemoveSub(t *testing.T, tr *subjectregistry.SubjectRegistry, cid, sid i
 	}
 }
 
+func mustRemoveCID(t *testing.T, tr *subjectregistry.SubjectRegistry, cid int64) {
+	t.Helper()
+	if err := tr.RemoveCID(cid); err != nil {
+		t.Fatalf("RemoveCID(%d) unexpected error: %v", cid, err)
+	}
+}
+
 // --- RemoveSub error cases ---
 
 func TestRemoveSub_UnknownCID(t *testing.T) {
@@ -384,5 +391,55 @@ func TestRemoveSub_ReAddAfterRemoveYieldsOneResult(t *testing.T) {
 	got := mustLookup(t, tr, "x.y")
 	if len(got) != 1 || got[0].SID != 1 {
 		t.Fatalf("expected exactly 1 result after re-add, got %v", got)
+	}
+}
+
+func TestRemoveCID_UnknownCIDNoop(t *testing.T) {
+	tr := subjectregistry.NewSubjectRegistry()
+	mustAddSub(t, tr, "x.y", makeSubFull(1, 1))
+
+	mustRemoveCID(t, tr, 999)
+
+	got := mustLookup(t, tr, "x.y")
+	if len(got) != 1 || got[0].CID != 1 || got[0].SID != 1 {
+		t.Fatalf("expected existing sub to remain after unknown CID remove, got %v", got)
+	}
+}
+
+func TestRemoveCID_RemovesAllSubsForCID(t *testing.T) {
+	tr := subjectregistry.NewSubjectRegistry()
+	mustAddSub(t, tr, "foo.bar", makeSubFull(1, 1))
+	mustAddSub(t, tr, "foo.*", makeSubFull(1, 2))
+	mustAddSub(t, tr, "foo.>", makeSubFull(1, 3))
+
+	mustRemoveCID(t, tr, 1)
+
+	if got := mustLookup(t, tr, "foo.bar"); len(got) != 0 {
+		t.Fatalf("expected no matches for foo.bar after RemoveCID, got %v", got)
+	}
+	if got := mustLookup(t, tr, "foo.bar.baz"); len(got) != 0 {
+		t.Fatalf("expected no matches for foo.bar.baz after RemoveCID, got %v", got)
+	}
+	if err := tr.RemoveSub(1, 1); err == nil {
+		t.Fatal("expected RemoveSub to fail after RemoveCID removed index entries")
+	}
+}
+
+func TestRemoveCID_LeavesOtherClients(t *testing.T) {
+	tr := subjectregistry.NewSubjectRegistry()
+	mustAddSub(t, tr, "a.b", makeSubFull(1, 1))
+	mustAddSub(t, tr, "a.b", makeSubFull(2, 2))
+	mustAddSub(t, tr, "a.*", makeSubFull(2, 3))
+
+	mustRemoveCID(t, tr, 1)
+
+	got := sorted(mustLookup(t, tr, "a.b"))
+	if len(got) != 2 {
+		t.Fatalf("expected CID 2 subscriptions to remain, got %v", got)
+	}
+	for _, s := range got {
+		if s.CID != 2 {
+			t.Fatalf("found removed CID in lookup results: %v", got)
+		}
 	}
 }

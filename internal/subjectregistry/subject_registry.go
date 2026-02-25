@@ -33,6 +33,7 @@ type Registry interface {
 	AddSub(subject string, s Sub) error
 	Lookup(subject string) ([]Sub, error)
 	RemoveSub(CID, SID int64) error
+	RemoveCID(CID int64) error
 }
 
 func NewSubjectRegistry() *SubjectRegistry {
@@ -98,6 +99,26 @@ func (t *SubjectRegistry) RemoveSub(CID, SID int64) error {
 		delete(t.index, CID)
 	}
 
+	t.removeSubFromNodeAndPrune(n, CID, SID)
+
+	return nil
+}
+
+func (t *SubjectRegistry) RemoveCID(CID int64) error {
+	bySID := t.index[CID]
+	if bySID == nil {
+		return nil
+	}
+
+	for sid, n := range bySID {
+		t.removeSubFromNodeAndPrune(n, CID, sid)
+	}
+	delete(t.index, CID)
+
+	return nil
+}
+
+func (t *SubjectRegistry) removeSubFromNodeAndPrune(n *node, CID, SID int64) {
 	n.removeSub(CID, SID)
 
 	for n != nil && n.parent != nil && len(n.subs) == 0 && len(n.children) == 0 {
@@ -105,8 +126,6 @@ func (t *SubjectRegistry) RemoveSub(CID, SID int64) error {
 		delete(parent.children, n.key)
 		n = parent
 	}
-
-	return nil
 }
 
 // removeSub removes all subs matching (CID, SID) from the node's subs slice in
