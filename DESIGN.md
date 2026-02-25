@@ -34,7 +34,7 @@ flowchart LR
     A[main listener] -->|accept conn| B[Conn Supervisor]
     B --> C[Reader Actor]
     B --> D[Writer Actor]
-    C -->|CommandEnvelope| E[Broker Actor]
+    C -->|BrokerEvent| E[Broker Actor]
     E -->|OutboundMsg| D
     E --> F[(Subject Registry Trie)]
 ```
@@ -46,22 +46,25 @@ flowchart LR
 - Creates per-connection channels and launches:
   - `readerLoop(CID, conn, brokerInbox, control)`
   - `writerLoop(CID, conn, outboundMailbox, control)`
+- Emits `SessionUpEvent` once outbound mailbox wiring is ready.
 - Handles shutdown coordination for each connection.
 
 ### 2) Reader Actor (per connection)
 - Owns decoding from wire (`internal/codec`).
-- For each decoded command, sends a `CommandEnvelope` to broker.
+- For each decoded command, sends a `CmdEvent` to broker.
 - Does not mutate routing state directly.
-- On decode/connection error: notifies broker of disconnect.
+- On decode/connection error: emits `SessionDownEvent`.
 
 ### 3) Writer Actor (per connection)
-- Owns all writes to the socket.
+- Owns all writes to the socket.Add a “Protocol Compatibility Matrix” section listing supported/unsupported NATS behaviors in v1.
+Add explicit limits (max_payload, per-client pending bytes/messages, global pending bytes) and disconnect/error behavior.
+Add a “Lifecycle State Machine” section for SessionUp/Down, channel-close ownership, and idempotent cleanup.
 - Receives `OutboundMsg` from broker via mailbox channel.
 - Encodes server responses (`MSG`, `+OK`, `ERR`, `PONG`, etc.) and flushes.
 - If mailbox policy is exceeded (slow client), follows configured policy (recommended: disconnect client).
 
 ### 4) Broker Actor (single goroutine)
-- Single consumer of `brokerInbox <-chan CommandEnvelope`.
+- Single consumer of `brokerInbox <-chan BrokerEvent`.
 - Owns:
   - subject registry / trie.
   - connection directory (`CID -> ClientSession`).
@@ -71,14 +74,31 @@ flowchart LR
   - `UNSUB`: remove subscription.
   - `PUB`: lookup matching subs and fanout to target writers.
   - `PING`: respond with `PONG`.
-  - disconnect event: remove all subs for `CID`, cleanup client state.
+  - session down event: remove all subs for `CID`, cleanup client state.
 
 ## Message Contracts
 ```go
-type CommandEnvelope struct {
-    CID   int64
-    Cmd   codec.Command
+type BrokerEvent interface{ isBrokerEvent() }
+
+// Wire command from reader actor.
+type CmdEvent struct {
+    CID int64
+    Cmd codec.Command
 }
+func (CmdEvent) isBrokerEvent() {}
+
+// Session lifecycle from connection supervisor.
+type SessionUpEvent struct {
+    CID      int64
+    Outbound chan<- OutboundMsg
+}
+func (SessionUpEvent) isBrokerEvent() {}
+
+type SessionDownEvent struct {
+    CID int64
+    Why error // optional
+}
+func (SessionDownEvent) isBrokerEvent() {}
 
 // Stored in subject registry / trie.
 // Routing metadata only: no socket or channel pointers.
@@ -92,7 +112,7 @@ type Sub struct {
 type ClientSession struct {
     CID      int64
     Outbound chan<- OutboundMsg
-    // Conn net.Conn // optional: owned by supervisor/writer side only
+    SIDs     map[int64]struct{} // active SID set for this client
 }
 
 type OutboundMsg struct {
@@ -117,11 +137,11 @@ sequenceDiagram
     participant W as Writer Actor
 
     C->>R: SUB foo.* 1
-    R->>B: CommandEnvelope{CID, SUB}
+    R->>B: CmdEvent{CID, SUB}
     B->>T: AddSub(subject, cid, sid)
 
     C->>R: PUB foo.bar 5\r\nhello
-    R->>B: CommandEnvelope{CID, PUB}
+    R->>B: CmdEvent{CID, PUB}
     B->>T: Lookup(foo.bar)
     T-->>B: [matching subs]
     B->>B: resolve sub.CID -> ClientSession
@@ -132,7 +152,7 @@ sequenceDiagram
 ## State Ownership and Locking
 - Broker-owned state is single-threaded: no `sync.Mutex` required.
 - If `SubjectRegistry` remains package-level reusable, keep locking optional or document broker-only usage.
-- Connection/session state is broker-owned by identity (`CID`) and may be updated on reconnect without touching trie entries.
+- Connection/session state is broker-owned by identity (`CID`).
 
 ## Backpressure and Slow Consumers
 Decision required:
@@ -152,7 +172,7 @@ Tradeoff:
 
 ## Error Handling
 - Parse error in reader: send protocol error then disconnect.
-- Writer error: connection closed; broker receives disconnect event and cleans subscriptions.
+- Writer error: connection closed; broker receives `SessionDownEvent` and cleans subscriptions.
 - Broker should treat unknown `UNSUB` as safe no-op or protocol error (choose and document).
 
 Decision for v1:
@@ -160,8 +180,8 @@ Decision for v1:
 
 ## Disconnect and Cleanup
 On connection close/error:
-1. reader or writer emits `Disconnect{CID}` to broker.
-2. broker removes all subscriptions for that `CID`.
+1. reader or supervisor emits `SessionDownEvent{CID}` to broker.
+2. broker removes all `SIDs` for that `CID` from subject registry.
 3. broker removes `CID` from client directory.
 4. supervisor closes remaining goroutine/channels safely.
 
@@ -170,8 +190,13 @@ On connection close/error:
 - `internal/subjectregistry` already supports wildcard lookup and `(CID,SID)` removal.
 - Needed refactor:
   - Keep subject registry entries as plain `Sub{CID,SID}` (no transport pointers).
-  - Add/maintain broker client directory `map[CID]*ClientSession` for writer mailbox routing.
+  - Add/maintain broker client directory `map[CID]*ClientSession` for writer mailbox routing and per-session `SIDs`.
   - Move synchronization responsibility to broker loop (and remove internal lock if broker-owned).
+
+## CID Assignment Tradeoff
+- Decision for v1: `CID` is a server-assigned monotonic counter and is never reused.
+- With non-reused monotonic `CID`s, an `Epoch` field is not required for correctness.
+- If future designs recycle `CID`s, add a per-session generation (`Epoch`) to guard against stale async events (for example, delayed disconnect events affecting a new session that reused a `CID`).
 
 ## Risks and Design Issues to Resolve
 1. Ordering guarantees: define required ordering across different subjects for same client.
@@ -197,11 +222,15 @@ Payload fanout tradeoff:
 - Both add coordination complexity, so v1 stays with a single broker actor.
 
 ## Suggested Implementation Order
-1. Introduce broker loop and channel contracts (`CommandEnvelope`, `Disconnect`, `OutboundMsg`).
-2. Implement connection supervisor with reader/writer goroutines.
-3. Integrate broker with existing `SubjectRegistry`.
-4. Define and enforce backpressure policy for writer mailbox.
-5. Add integration tests with multiple clients and wildcard subscriptions.
+1. Implement broker as a minimal loop with 
+   1. one inbox channel, 
+   2. broker-owned client directory (`CID -> ClientSession`), 
+   3. and no `Epoch` in v1 (monotonic non-reused `CID`).
+2. Define minimal broker event contracts and wire them end-to-end (`CmdEvent`, `SessionUpEvent`, `SessionDownEvent`, `OutboundMsg`).
+3. Implement connection supervisor with reader/writer goroutines and connect them to broker inbox/outbound mailboxes.
+4. Integrate broker with existing `SubjectRegistry` for `SUB`/`UNSUB`/`PUB` and disconnect cleanup.
+5. Define and enforce backpressure policy for bounded writer mailbox (disconnect on full queue for v1).
+6. Add integration tests with multiple clients, wildcard subscriptions, and disconnect cleanup.
 
 ## Clarifying Questions
 - None open right now.
