@@ -31,15 +31,19 @@ func (SessionDownEvent) isBrokerEvent() {}
 type Broker struct {
 	registry subjectregistry.Registry
 	outbound map[int64]chan<- codec.OutboundCommands
-	inbox    <-chan BrokerEvent
+	inbox    chan BrokerEvent
 }
 
 func NewBroker(r subjectregistry.Registry) *Broker {
 	return &Broker{
 		registry: r,
 		outbound: make(map[int64]chan<- codec.OutboundCommands),
-		inbox:    make(<-chan BrokerEvent),
+		inbox:    make(chan BrokerEvent),
 	}
+}
+
+func (b *Broker) Input() chan<- BrokerEvent {
+	return b.inbox
 }
 
 func (b *Broker) Run() {
