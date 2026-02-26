@@ -65,7 +65,7 @@ func (b *Broker) handleSessionDownEvent(ev SessionDownEvent) {
 }
 
 func (b *Broker) handleCmdEvent(ev CmdEvent) {
-	switch ev.Cmd.(type) {
+	switch cmd := ev.Cmd.(type) {
 	case codec.Ping:
 		outbox, ok := b.outbound[ev.CID]
 		if !ok {
@@ -77,7 +77,6 @@ func (b *Broker) handleCmdEvent(ev CmdEvent) {
 	case codec.Connect:
 		// TODO:
 	case codec.Sub:
-		cmd := ev.Cmd.(codec.Sub)
 		b.registry.AddSub(
 			string(cmd.Subject),
 			subjectregistry.Sub{
@@ -86,7 +85,6 @@ func (b *Broker) handleCmdEvent(ev CmdEvent) {
 			},
 		)
 	case codec.Pub:
-		cmd := ev.Cmd.(codec.Pub)
 		subs, err := b.registry.Lookup(string(cmd.Subject))
 		if err != nil {
 			break
@@ -104,7 +102,6 @@ func (b *Broker) handleCmdEvent(ev CmdEvent) {
 		}
 
 	case codec.Unsub:
-		cmd := ev.Cmd.(codec.Unsub)
 		b.registry.RemoveSub(ev.CID, cmd.SID)
 	}
 }
