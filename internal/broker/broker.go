@@ -41,3 +41,70 @@ func NewBroker(r subjectregistry.Registry) *Broker {
 		inbox:    make(<-chan BrokerEvent),
 	}
 }
+
+func (b *Broker) Run() {
+	for msg := range b.inbox {
+		switch ev := msg.(type) {
+		case CmdEvent:
+			b.handleCmdEvent(ev)
+		case SessionUpEvent:
+			b.handleSessionUpEvent(ev)
+		case SessionDownEvent:
+			b.handleSessionDownEvent(ev)
+		}
+	}
+}
+
+func (b *Broker) handleSessionUpEvent(ev SessionUpEvent) {
+	b.outbound[ev.CID] = ev.Outbound
+}
+
+func (b *Broker) handleSessionDownEvent(ev SessionDownEvent) {
+	delete(b.outbound, ev.CID)
+	b.registry.RemoveCID(ev.CID)
+}
+
+func (b *Broker) handleCmdEvent(ev CmdEvent) {
+	switch ev.Cmd.(type) {
+	case codec.Ping:
+		outbox, ok := b.outbound[ev.CID]
+		if !ok {
+			break
+		}
+		outbox <- codec.Pong{}
+	case codec.Pong:
+		// TODO:
+	case codec.Connect:
+		// TODO:
+	case codec.Sub:
+		cmd := ev.Cmd.(codec.Sub)
+		b.registry.AddSub(
+			string(cmd.Subject),
+			subjectregistry.Sub{
+				CID: ev.CID,
+				SID: cmd.SID,
+			},
+		)
+	case codec.Pub:
+		cmd := ev.Cmd.(codec.Pub)
+		subs, err := b.registry.Lookup(string(cmd.Subject))
+		if err != nil {
+			break
+		}
+		for _, sub := range subs {
+			outbox, ok := b.outbound[sub.CID]
+			if !ok {
+				continue
+			}
+			outbox <- codec.Msg{
+				Subject: cmd.Subject,
+				SID:     sub.SID,
+				Payload: cmd.Payload,
+			}
+		}
+
+	case codec.Unsub:
+		cmd := ev.Cmd.(codec.Unsub)
+		b.registry.RemoveSub(ev.CID, cmd.SID)
+	}
+}

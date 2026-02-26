@@ -35,7 +35,7 @@ flowchart LR
     B --> C[Reader Actor]
     B --> D[Writer Actor]
     C -->|BrokerEvent| E[Broker Actor]
-    E -->|OutboundMsg| D
+    E -->|OutboundCmd| D
     E --> F[(Subject Registry Trie)]
 ```
 
@@ -56,10 +56,8 @@ flowchart LR
 - On decode/connection error: emits `SessionDownEvent`.
 
 ### 3) Writer Actor (per connection)
-- Owns all writes to the socket.Add a “Protocol Compatibility Matrix” section listing supported/unsupported NATS behaviors in v1.
-Add explicit limits (max_payload, per-client pending bytes/messages, global pending bytes) and disconnect/error behavior.
-Add a “Lifecycle State Machine” section for SessionUp/Down, channel-close ownership, and idempotent cleanup.
-- Receives `OutboundMsg` from broker via mailbox channel.
+- Owns all writes to the socket.
+- Receives `OutboundCmd` from broker via mailbox channel.
 - Encodes server responses (`MSG`, `+OK`, `ERR`, `PONG`, etc.) and flushes.
 - If mailbox policy is exceeded (slow client), follows configured policy (recommended: disconnect client).
 
@@ -67,7 +65,7 @@ Add a “Lifecycle State Machine” section for SessionUp/Down, channel-close ow
 - Single consumer of `brokerInbox <-chan BrokerEvent`.
 - Owns:
   - subject registry / trie.
-  - connection directory (`CID -> ClientSession`).
+  - connection directory (`map[CID]chan<- OutboundCmd`).
   - optional per-client metadata (subscriptions, stats).
 - Executes command semantics:
   - `SUB`: add subscription.
@@ -90,7 +88,7 @@ func (CmdEvent) isBrokerEvent() {}
 // Session lifecycle from connection supervisor.
 type SessionUpEvent struct {
     CID      int64
-    Outbound chan<- OutboundMsg
+    Outbound chan<- OutboundCmd
 }
 func (SessionUpEvent) isBrokerEvent() {}
 
@@ -106,26 +104,13 @@ type Sub struct {
     CID int64
     SID int64
 }
-
-// Broker-owned per-connection runtime state.
-// Transport details stay outside the trie.
-type ClientSession struct {
-    CID      int64
-    Outbound chan<- OutboundMsg
-    SIDs     map[int64]struct{} // active SID set for this client
-}
-
-type OutboundMsg struct {
-    Subject []byte
-    SID     int64
-    Payload []byte
-}
 ```
 
 Notes:
 - The trie stores `Sub{CID,SID}` only, never `net.Conn` or outbound channels.
 - Broker resolves `CID -> ClientSession` and enqueues onto that session's writer mailbox.
 - Keep socket details isolated to connection supervisor/writer actor.
+- Writer does not run protocol business logic; it only serializes `OutboundCmd` values in-order.
 
 ## End-to-End Flow
 ```mermaid
@@ -188,9 +173,6 @@ On connection close/error:
 ## Current Fit with Existing Code
 - `internal/codec` already decodes commands (`PING`, `PONG`, `CONNECT`, `SUB`, `UNSUB`, `PUB`).
 - `internal/subjectregistry` already supports wildcard lookup and `(CID,SID)` removal.
-- Needed refactor:
-  - Keep subject registry entries as plain `Sub{CID,SID}` (no transport pointers).
-  - Add/maintain broker client directory `map[CID]*ClientSession` for writer mailbox routing and per-session `SIDs`.
   - Move synchronization responsibility to broker loop (and remove internal lock if broker-owned).
 
 ## CID Assignment Tradeoff
@@ -226,7 +208,7 @@ Payload fanout tradeoff:
    1. one inbox channel, 
    2. broker-owned client directory (`CID -> ClientSession`), 
    3. and no `Epoch` in v1 (monotonic non-reused `CID`).
-2. Define minimal broker event contracts and wire them end-to-end (`CmdEvent`, `SessionUpEvent`, `SessionDownEvent`, `OutboundMsg`).
+2. Define minimal broker event contracts and wire them end-to-end (`CmdEvent`, `SessionUpEvent`, `SessionDownEvent`, `OutboundCmd` + concrete variants).
 3. Implement connection supervisor with reader/writer goroutines and connect them to broker inbox/outbound mailboxes.
 4. Integrate broker with existing `SubjectRegistry` for `SUB`/`UNSUB`/`PUB` and disconnect cleanup.
 5. Define and enforce backpressure policy for bounded writer mailbox (disconnect on full queue for v1).
