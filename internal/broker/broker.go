@@ -15,6 +15,13 @@ type CmdEvent struct {
 
 func (CmdEvent) isBrokerEvent() {}
 
+type ProtocolErrorEvent struct {
+	CID int64
+	Msg string
+}
+
+func (ProtocolErrorEvent) isBrokerEvent() {}
+
 type SessionUpEvent struct {
 	CID      int64
 	Outbound chan<- codec.OutboundCommands
@@ -51,6 +58,8 @@ func (b *Broker) Run() {
 		switch ev := msg.(type) {
 		case CmdEvent:
 			b.handleCmdEvent(ev)
+		case ProtocolErrorEvent:
+			b.handleProtocolErrorEvent(ev)
 		case SessionUpEvent:
 			b.handleSessionUpEvent(ev)
 		case SessionDownEvent:
@@ -64,8 +73,17 @@ func (b *Broker) handleSessionUpEvent(ev SessionUpEvent) {
 }
 
 func (b *Broker) handleSessionDownEvent(ev SessionDownEvent) {
-	delete(b.outbound, ev.CID)
+	if outbox, ok := b.outbound[ev.CID]; ok {
+		close(outbox)
+		delete(b.outbound, ev.CID)
+	}
 	b.registry.RemoveCID(ev.CID)
+}
+
+func (b *Broker) disconnectCID(cid int64, outbox chan<- codec.OutboundCommands) {
+	close(outbox)
+	delete(b.outbound, cid)
+	b.registry.RemoveCID(cid)
 }
 
 func (b *Broker) handleCmdEvent(ev CmdEvent) {
@@ -75,7 +93,11 @@ func (b *Broker) handleCmdEvent(ev CmdEvent) {
 		if !ok {
 			break
 		}
-		outbox <- codec.Pong{}
+		select {
+		case outbox <- codec.Pong{}:
+		default:
+			b.disconnectCID(ev.CID, outbox)
+		}
 	case codec.Pong:
 		// TODO:
 	case codec.Connect:
@@ -98,14 +120,34 @@ func (b *Broker) handleCmdEvent(ev CmdEvent) {
 			if !ok {
 				continue
 			}
-			outbox <- codec.Msg{
+			msg := codec.Msg{
 				Subject: cmd.Subject,
 				SID:     sub.SID,
 				Payload: cmd.Payload,
+			}
+			select {
+			case outbox <- msg:
+			default:
+				b.disconnectCID(sub.CID, outbox)
 			}
 		}
 
 	case codec.Unsub:
 		b.registry.RemoveSub(ev.CID, cmd.SID)
 	}
+}
+
+func (b *Broker) handleProtocolErrorEvent(ev ProtocolErrorEvent) {
+	outbox, ok := b.outbound[ev.CID]
+	if !ok {
+		b.registry.RemoveCID(ev.CID)
+		return
+	}
+
+	select {
+	case outbox <- codec.Err{Message: ev.Msg}:
+	default:
+	}
+
+	b.disconnectCID(ev.CID, outbox)
 }

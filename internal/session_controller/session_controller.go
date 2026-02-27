@@ -2,9 +2,11 @@ package sessioncontroller
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/elmq0022/pub-sub/internal/broker"
 	"github.com/elmq0022/pub-sub/internal/codec"
@@ -24,7 +26,7 @@ func NewSessionController(brokerInbox chan<- broker.BrokerEvent) *SessionControl
 func (s *SessionController) Start(conn net.Conn) {
 	cid := s.nextCID
 	s.nextCID++
-	outbound := make(chan codec.OutboundCommands)
+	outbound := make(chan codec.OutboundCommands, 256)
 	var downOnce sync.Once
 
 	// TODO: consider a handshake channel to coordinate start.
@@ -44,6 +46,7 @@ func sendSessionDownOnce(cid int64, brokerInbox chan<- broker.BrokerEvent, once 
 
 func readerLoop(cid int64, conn net.Conn, brokerInbox chan<- broker.BrokerEvent, downOnce *sync.Once) {
 	c, err := codec.NewCodec(conn)
+
 	if err != nil {
 		sendSessionDownOnce(cid, brokerInbox, downOnce)
 		return
@@ -57,6 +60,12 @@ func readerLoop(cid int64, conn net.Conn, brokerInbox chan<- broker.BrokerEvent,
 	for {
 		cmd, err := c.Decode()
 		if err != nil {
+			if shouldEmitProtocolError(err) {
+				brokerInbox <- broker.ProtocolErrorEvent{
+					CID: cid,
+					Msg: "unparsable command",
+				}
+			}
 			return
 		}
 
@@ -67,6 +76,22 @@ func readerLoop(cid int64, conn net.Conn, brokerInbox chan<- broker.BrokerEvent,
 	}
 }
 
+func shouldEmitProtocolError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) {
+		return false
+	}
+
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return false
+	}
+
+	return true
+}
+
 func writerLoop(
 	cid int64,
 	conn net.Conn,
@@ -74,20 +99,17 @@ func writerLoop(
 	outbound <-chan codec.OutboundCommands,
 	downOnce *sync.Once,
 ) {
-	var w io.Writer = conn
-	b, ok := w.(*bufio.Writer)
-	if !ok {
-		b = bufio.NewWriter(w)
-	}
+	b := bufio.NewWriterSize(conn, 32*1024)
 
 	defer func() {
 		sendSessionDownOnce(cid, brokerInbox, downOnce)
 		_ = conn.Close()
 	}()
 
+	const timeout = 5 * time.Second
 	for cmd := range outbound {
-		err := cmd.EncodeTo(b)
-		if err != nil {
+		_ = conn.SetWriteDeadline(time.Now().Add(timeout))
+		if err := cmd.EncodeTo(b); err != nil {
 			return
 		}
 		if err := b.Flush(); err != nil {

@@ -95,10 +95,14 @@ func (c *Codec) Decode() (InboundCommands, error) {
 				return nil, errors.New("did not get full payload")
 			}
 
-			if c, err := c.brw.ReadByte(); c != '\r' || err != nil {
-				return nil, errors.New("bad payload")
-			}
-			state = ST_CR_END
+				c, err := c.brw.ReadByte()
+				if err != nil {
+					return nil, err
+				}
+				if c != '\r' {
+					return nil, errors.New("bad payload")
+				}
+				state = ST_CR_END
 
 		case ST_UNSUB_SID:
 			ss.SID = append(ss.SID, b)
