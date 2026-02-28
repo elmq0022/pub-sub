@@ -1,13 +1,14 @@
 package broker
 
 import (
+	"time"
+
 	"github.com/elmq0022/pub-sub/internal/codec"
 	"github.com/elmq0022/pub-sub/internal/subjectregistry"
 )
 
 type BrokerEvent interface{ isBrokerEvent() }
 
-// Wire command from reader actor.
 type CmdEvent struct {
 	CID int64
 	Cmd codec.InboundCommands
@@ -35,16 +36,26 @@ type SessionDownEvent struct {
 
 func (SessionDownEvent) isBrokerEvent() {}
 
+type HeartbeatTickEvent struct{}
+
+func (HeartbeatTickEvent) isBrokerEvent() {}
+
+type ClientSession struct {
+	Outbound     chan<- codec.OutboundCommands
+	AwaitingPong bool
+	PingSentAt   time.Time
+}
+
 type Broker struct {
 	registry subjectregistry.Registry
-	outbound map[int64]chan<- codec.OutboundCommands
+	sessions map[int64]ClientSession
 	inbox    chan BrokerEvent
 }
 
 func NewBroker(r subjectregistry.Registry) *Broker {
 	return &Broker{
 		registry: r,
-		outbound: make(map[int64]chan<- codec.OutboundCommands),
+		sessions: make(map[int64]ClientSession),
 		inbox:    make(chan BrokerEvent),
 	}
 }
@@ -54,6 +65,8 @@ func (b *Broker) Input() chan<- BrokerEvent {
 }
 
 func (b *Broker) Run() {
+	// TODO: start a goroutine that sends a HeartbeatEvent every so often
+
 	for msg := range b.inbox {
 		switch ev := msg.(type) {
 		case CmdEvent:
@@ -64,42 +77,51 @@ func (b *Broker) Run() {
 			b.handleSessionUpEvent(ev)
 		case SessionDownEvent:
 			b.handleSessionDownEvent(ev)
+		case HeartbeatTickEvent:
+			b.handleHeartbeatTickEvent(ev)
 		}
 	}
 }
 
 func (b *Broker) handleSessionUpEvent(ev SessionUpEvent) {
-	b.outbound[ev.CID] = ev.Outbound
+	b.sessions[ev.CID] = ClientSession{
+		Outbound:     ev.Outbound,
+		AwaitingPong: false,
+		PingSentAt:   time.Now(),
+	}
 }
 
 func (b *Broker) handleSessionDownEvent(ev SessionDownEvent) {
-	if outbox, ok := b.outbound[ev.CID]; ok {
-		close(outbox)
-		delete(b.outbound, ev.CID)
+	if session, ok := b.sessions[ev.CID]; ok {
+		close(session.Outbound)
+		delete(b.sessions, ev.CID)
 	}
 	b.registry.RemoveCID(ev.CID)
 }
 
-func (b *Broker) disconnectCID(cid int64, outbox chan<- codec.OutboundCommands) {
-	close(outbox)
-	delete(b.outbound, cid)
+func (b *Broker) disconnectCID(cid int64, session ClientSession) {
+	close(session.Outbound)
+	delete(b.sessions, cid)
 	b.registry.RemoveCID(cid)
 }
 
 func (b *Broker) handleCmdEvent(ev CmdEvent) {
 	switch cmd := ev.Cmd.(type) {
 	case codec.Ping:
-		outbox, ok := b.outbound[ev.CID]
+		session, ok := b.sessions[ev.CID]
 		if !ok {
 			break
 		}
 		select {
-		case outbox <- codec.Pong{}:
+		case session.Outbound <- codec.Pong{}:
 		default:
-			b.disconnectCID(ev.CID, outbox)
+			b.disconnectCID(ev.CID, session)
 		}
 	case codec.Pong:
-		// TODO:
+		if session, ok := b.sessions[ev.CID]; ok {
+			session.AwaitingPong = false
+			b.sessions[ev.CID] = session
+		}
 	case codec.Connect:
 		// TODO:
 	case codec.Sub:
@@ -116,7 +138,7 @@ func (b *Broker) handleCmdEvent(ev CmdEvent) {
 			break
 		}
 		for _, sub := range subs {
-			outbox, ok := b.outbound[sub.CID]
+			session, ok := b.sessions[sub.CID]
 			if !ok {
 				continue
 			}
@@ -126,9 +148,9 @@ func (b *Broker) handleCmdEvent(ev CmdEvent) {
 				Payload: cmd.Payload,
 			}
 			select {
-			case outbox <- msg:
+			case session.Outbound <- msg:
 			default:
-				b.disconnectCID(sub.CID, outbox)
+				b.disconnectCID(sub.CID, session)
 			}
 		}
 
@@ -138,16 +160,41 @@ func (b *Broker) handleCmdEvent(ev CmdEvent) {
 }
 
 func (b *Broker) handleProtocolErrorEvent(ev ProtocolErrorEvent) {
-	outbox, ok := b.outbound[ev.CID]
+	session, ok := b.sessions[ev.CID]
 	if !ok {
 		b.registry.RemoveCID(ev.CID)
 		return
 	}
 
 	select {
-	case outbox <- codec.Err{Message: ev.Msg}:
+	case session.Outbound <- codec.Err{Message: ev.Msg}:
 	default:
 	}
 
-	b.disconnectCID(ev.CID, outbox)
+	b.disconnectCID(ev.CID, session)
+}
+
+func (b *Broker) handleHeartbeatTickEvent(ev HeartbeatTickEvent) {
+	_ = ev
+
+	const heartbeatTimeout = 90 * time.Second
+
+	now := time.Now()
+	for cid, session := range b.sessions {
+		if session.AwaitingPong {
+			if now.Sub(session.PingSentAt) >= heartbeatTimeout {
+				b.disconnectCID(cid, session)
+			}
+			continue
+		}
+
+		select {
+		case session.Outbound <- codec.Ping{}:
+			session.AwaitingPong = true
+			session.PingSentAt = now
+			b.sessions[cid] = session
+		default:
+			b.disconnectCID(cid, session)
+		}
+	}
 }

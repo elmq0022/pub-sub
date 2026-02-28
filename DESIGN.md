@@ -65,13 +65,14 @@ flowchart LR
 - Single consumer of `brokerInbox <-chan BrokerEvent`.
 - Owns:
   - subject registry / trie.
-  - connection directory (`map[CID]chan<- OutboundCmd`).
+  - connection directory (`map[CID]ClientSession`).
   - optional per-client metadata (subscriptions, stats).
 - Executes command semantics:
   - `SUB`: add subscription.
   - `UNSUB`: remove subscription.
   - `PUB`: lookup matching subs and fanout to target writers.
   - `PING`: respond with `PONG`.
+  - heartbeat: periodically send server `PING`, require `PONG` to keep session alive.
   - session down event: remove all subs for `CID`, cleanup client state.
 
 ## Message Contracts
@@ -111,6 +112,20 @@ Notes:
 - Broker resolves `CID -> ClientSession` and enqueues onto that session's writer mailbox.
 - Keep socket details isolated to connection supervisor/writer actor.
 - Writer does not run protocol business logic; it only serializes `OutboundCmd` values in-order.
+
+Recommended broker-owned session record:
+```go
+type ClientSession struct {
+    Outbound     chan<- OutboundCmd
+    AwaitingPong bool
+    PingSentAt   time.Time
+}
+```
+
+Rationale:
+- Keep outbound mailbox and heartbeat state in the same broker-owned map.
+- Session lifetime, disconnect policy, and heartbeat transitions all stay in one place.
+- Avoid keeping a second heartbeat index/list that must be updated in lockstep with connect/disconnect.
 
 ## End-to-End Flow
 ```mermaid
@@ -154,6 +169,35 @@ Tradeoff:
 - `disconnect`: simplest safe behavior and protects broker throughput, but aggressive for slow clients.
 - `drop`: keeps connections alive but introduces silent data loss unless surfaced to clients.
 - `block`: easiest code path but lets one slow client stall global progress.
+
+## Heartbeat
+Decision for v1:
+- Broker owns heartbeat state and heartbeat policy.
+- Liveness is proven only by receiving `PONG`.
+- Server-originated heartbeat uses protocol `PING`.
+- If a session does not answer a broker `PING` with `PONG` before timeout, broker disconnects it.
+
+Why this shape:
+- Broker already owns the session directory and disconnect path.
+- Heartbeat is protocol behavior, not socket plumbing, so it belongs with command handling.
+- Using only `PONG` as the liveness signal keeps the state machine simple and explicit.
+
+Recommended flow:
+1. Broker receives a periodic internal tick event.
+2. For each connected session:
+   - if `AwaitingPong` is `false`, enqueue `PING`, then set `AwaitingPong=true` and record `PingSentAt`
+   - if `AwaitingPong` is `true` and timeout has elapsed since `PingSentAt`, disconnect the session
+3. When broker receives inbound `PONG` for a `CID`, set `AwaitingPong=false`
+
+Deliberate simplification for v1:
+- Do not treat arbitrary client traffic as proof of life.
+- Only an explicit `PONG` clears the outstanding heartbeat.
+- This may disconnect a client that is otherwise active but does not answer `PING`; that is acceptable for the first version because it keeps heartbeat semantics unambiguous.
+
+Data structure decision:
+- Reuse the broker's existing session directory and store heartbeat fields alongside the outbound mailbox.
+- Do not create a separate heartbeat list/map unless profiling later shows scan cost is a real problem.
+- With one global broker goroutine in v1, a linear scan of connected sessions on each heartbeat tick is operationally simple and keeps connect/disconnect bookkeeping centralized.
 
 ## Error Handling
 - Parse error in reader: send protocol error then disconnect.
