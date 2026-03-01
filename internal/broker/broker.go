@@ -13,17 +13,24 @@ type ClientSession struct {
 	PingSentAt   time.Time
 }
 
+type BrokerConfig struct {
+	HeartbeatTickInterval time.Duration
+	HeartbeatTimeout      time.Duration
+}
+
 type Broker struct {
 	registry subjectregistry.Registry
 	sessions map[int64]ClientSession
 	inbox    chan BrokerEvent
+	config   BrokerConfig
 }
 
-func NewBroker(r subjectregistry.Registry) *Broker {
+func NewBroker(r subjectregistry.Registry, config BrokerConfig) *Broker {
 	return &Broker{
 		registry: r,
 		sessions: make(map[int64]ClientSession),
 		inbox:    make(chan BrokerEvent),
+		config:   config,
 	}
 }
 
@@ -51,7 +58,7 @@ func (b *Broker) Run() {
 }
 
 func (b *Broker) startHeartbeat() {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(b.config.HeartbeatTickInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -63,7 +70,6 @@ func (b *Broker) handleSessionUpEvent(ev SessionUpEvent) {
 	b.sessions[ev.CID] = ClientSession{
 		Outbound:     ev.Outbound,
 		AwaitingPong: false,
-		PingSentAt:   time.Now(),
 	}
 }
 
@@ -160,13 +166,11 @@ func (b *Broker) handleProtocolErrorEvent(ev ProtocolErrorEvent) {
 
 func (b *Broker) handleHeartbeatTickEvent(ev HeartbeatTickEvent) {
 	_ = ev
-
-	const heartbeatTimeout = 90 * time.Second
-
 	now := time.Now()
+
 	for cid, session := range b.sessions {
 		if session.AwaitingPong {
-			if now.Sub(session.PingSentAt) >= heartbeatTimeout {
+			if now.Sub(session.PingSentAt) >= b.config.HeartbeatTimeout {
 				b.disconnectCID(cid, session)
 			}
 			continue
