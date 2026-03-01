@@ -13,10 +13,8 @@ import (
 
 func main() {
 	r := subjectregistry.NewSubjectRegistry()
-	b := broker.NewBroker(r, broker.BrokerConfig{
-		HeartbeatTickInterval: 30 * time.Second,
-		HeartbeatTimeout:      90 * time.Second,
-	})
+	c := broker.NewBrokerConfig(30*time.Second, 90*time.Second)
+	b := broker.NewBroker(r, c)
 	go b.Run()
 
 	s := sessioncontroller.NewSessionController(b.Input())

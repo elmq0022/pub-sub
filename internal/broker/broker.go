@@ -13,11 +13,6 @@ type ClientSession struct {
 	PingSentAt   time.Time
 }
 
-type BrokerConfig struct {
-	HeartbeatTickInterval time.Duration
-	HeartbeatTimeout      time.Duration
-}
-
 type Broker struct {
 	registry subjectregistry.Registry
 	sessions map[int64]ClientSession
