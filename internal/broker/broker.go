@@ -65,7 +65,7 @@ func (b *Broker) Input() chan<- BrokerEvent {
 }
 
 func (b *Broker) Run() {
-	// TODO: start a goroutine that sends a HeartbeatEvent every so often
+	go b.startHeartbeat()
 
 	for msg := range b.inbox {
 		switch ev := msg.(type) {
@@ -80,6 +80,15 @@ func (b *Broker) Run() {
 		case HeartbeatTickEvent:
 			b.handleHeartbeatTickEvent(ev)
 		}
+	}
+}
+
+func (b *Broker) startHeartbeat() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		b.inbox <- HeartbeatTickEvent{}
 	}
 }
 
