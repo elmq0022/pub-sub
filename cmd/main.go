@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/elmq0022/pub-sub/internal/broker"
-	sessioncontroller "github.com/elmq0022/pub-sub/internal/session_controller"
+	"github.com/elmq0022/pub-sub/internal/sessioncontroller"
 	"github.com/elmq0022/pub-sub/internal/subjectregistry"
 )
 

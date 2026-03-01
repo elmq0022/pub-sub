@@ -18,7 +18,7 @@ This project is mainly for learning and experimentation with:
 
 - [`cmd/main.go`](/home/zero/Projects/golang/pub-sub/cmd/main.go): starts the TCP server, broker, and session controller
 - [`internal/broker/broker.go`](/home/zero/Projects/golang/pub-sub/internal/broker/broker.go): central broker loop and heartbeat logic
-- [`internal/session_controller/session_controller.go`](/home/zero/Projects/golang/pub-sub/internal/session_controller/session_controller.go): per-connection reader and writer loops
+- [`internal/sessioncontroller/session_controller.go`](/home/zero/Projects/golang/pub-sub/internal/sessioncontroller/session_controller.go): per-connection reader and writer loops
 - [`internal/codec/codec.go`](/home/zero/Projects/golang/pub-sub/internal/codec/codec.go): wire protocol parsing and encoding
 - [`internal/subjectregistry/subject_registry.go`](/home/zero/Projects/golang/pub-sub/internal/subjectregistry/subject_registry.go): subject routing and wildcard lookup
 - [`DESIGN.md`](/home/zero/Projects/golang/pub-sub/DESIGN.md): design notes for the architecture
