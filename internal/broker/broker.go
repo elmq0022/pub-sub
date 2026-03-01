@@ -132,7 +132,15 @@ func (b *Broker) handleCmdEvent(ev CmdEvent) {
 			b.sessions[ev.CID] = session
 		}
 	case codec.Connect:
-		// TODO:
+		session, ok := b.sessions[ev.CID]
+		if !ok {
+			break
+		}
+		select {
+		case session.Outbound <- codec.OK{}:
+		default:
+			b.disconnectCID(ev.CID, session)
+		}
 	case codec.Sub:
 		b.registry.AddSub(
 			string(cmd.Subject),
