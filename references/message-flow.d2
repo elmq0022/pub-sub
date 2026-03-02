@@ -1,0 +1,29 @@
+direction: down
+
+session_controller: {
+  label: "Session Controller"
+  direction: right
+
+  start: "Start()"
+  reader: "Reader Loop"
+  writer: "Writer Loop"
+}
+
+broker_group: {
+  label: "Broker Runtime"
+  direction: right
+
+  core: "Broker"
+  heartbeat: "Heartbeat Loop"
+}
+
+registry: "Subject Registry"
+
+session_controller.start -> broker_group.core: "Up"
+session_controller.reader -> broker_group.core: "Inbound\nError\nDown"
+session_controller.writer -> broker_group.core: "Down"
+broker_group.core -> session_controller.writer: "Out"
+broker_group.heartbeat -> broker_group.core: "Tick"
+
+broker_group.core -> registry: "Sub ops"
+registry -> broker_group.core: "Lookup"

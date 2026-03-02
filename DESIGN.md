@@ -63,6 +63,10 @@ The implementation supports:
 
 ## High-Level Message Flow
 
+![High-level message flow](references/message-flow.svg)
+
+A simplified view of how session, protocol, broker, and registry interactions move through the system.
+
 ## Components
 
 ### Wire Protocol Encoder / Decoder
