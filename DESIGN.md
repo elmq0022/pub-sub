@@ -3,6 +3,7 @@
 ## Overview
 
 This project is a learning exercise focused on implementing a NATS-like message broker.
+For broader background on Core NATS, see the [official Core NATS concepts documentation](https://docs.nats.io/nats-concepts/core-nats). For protocol details, see the [official NATS client protocol reference](https://docs.nats.io/reference/reference-protocols/nats-protocol).
 
 The design focuses on correctness and uses an actor-style model with a single broker.
 This design manages concurrency without locks, but it limits maximum throughput because the broker is a single synchronous bottleneck.
@@ -15,7 +16,7 @@ The implementation supports:
 4. fanout to multiple subscribers
 5. at-most-once delivery
 6. a NATS-like `PING` / `PONG` heartbeat
-7. slow-client backpressure
+7. slow-client back pressure
 
 ## Goals and Non-Goals
 
