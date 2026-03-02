@@ -21,19 +21,23 @@ The implementation supports:
 
 ### Goals
 
-- go concurrency with goroutines and channels
-- protocol encoding and decoding
-- client heartbeat monitoring
-- system back pressure via buffered non blocking channels
-- subject routing 
-- actor style arch with message passing
+- At-most-once message delivery
+- Support for a defined subset of the NATS protocol: CONNECT, SUB, PUB, UNSUB, PING, PONG, +OK, and -ERR
+- Subject-based routing with `*` and `>` wildcards
+- Client support for subscribe, publish, and unsubscribe operations
+- Slow-connection handling that preserves system responsiveness
 
 ### Non-Goals
 
-- full core NATS compatibility
-- fully ready production system
-- 
-
+- Full Core NATS compatibility
+- Production readiness
+- Message persistence
+- Event replay
+- Clustering
+- Authentication
+- At-least-once or exactly-once delivery guarantees
+- Replication or horizontal scaling
+- Observability beyond logs
 
 ## Architecture Invariants
 
