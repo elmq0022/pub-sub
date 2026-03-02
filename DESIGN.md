@@ -19,7 +19,42 @@ The implementation supports:
 
 ## Goals and Non-Goals
 
+### Goals
+
+- go concurrency with goroutines and channels
+- protocol encoding and decoding
+- client heartbeat monitoring
+- system back pressure via buffered non blocking channels
+- subject routing 
+- actor style arch with message passing
+
+### Non-Goals
+
+- full core NATS compatibility
+- fully ready production system
+- 
+
+
 ## Architecture Invariants
+
+- The session controller creates and starts the reader and writer loops for each connection.
+- Readers receive and decode wire messages from the client connection.
+- Writers receive outbound commands from the broker, encode them, and write them to the client connection.
+- All protocol, lifecycle, and heartbeat events flow through a single synchronous broker.
+- The broker is the sole owner of mutable application state.
+- Outbound broker-to-writer messaging must never block.
+- Only the broker interacts directly with the subject registry.
+- The broker processes events in channel receive order.
+- When a connection closes, the broker removes that client from session state and subscriptions.
+- Readers and writers never communicate directly; they coordinate only through the broker.
+- CID values are monotonically increasing `int64` values and are unique for the lifetime of the process.
+- SID reuse is allowed and may result in duplicate deliveries.
+- The broker does not attempt to deduplicate subscriptions for a client.
+- `UNSUB` semantics are only reliable for subscriptions the registry can still directly index.
+- Slow connections are dropped when delivering to them would block the broker.
+- The writer is the sole writer for a connection.
+- The writer processes commands in the order they are received from its outbound channel.
+- The reader is the sole reader to a connection.
 
 ## High-Level Message Flow
 
