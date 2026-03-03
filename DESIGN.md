@@ -81,16 +81,27 @@ The decoder is low-allocation, but it is not zero-allocation like NATS.
 `PUB` and `SUB` still allocate and remain an area for improvement.
 Malformed commands return a decode error, which causes the reader to terminate the connection.
 Inbound commands are identified by an interface plus a no-op marker method.
-Outbound commands are identified structurally by implementing `EncodeTo`, and each outbound type
-serializes itself.
+Outbound commands are identified structurally by implementing `EncodeTo`, and each outbound type serializes itself.
 
 ### Session Controller
 
-#### Session Lifecycle
+The session controller assigns each new connection a unique, monotonically increasing `int64` CID using atomic allocation.
+For each accepted connection, it creates the per-client outbound channel, starts the writer loop, sends `SessionUpEvent` to the broker, and then starts the reader loop.
+This ordering ensures the broker registers the session before inbound commands from that client are processed.
+
+The reader and writer share a `sync.Once` guard for shutdown.
+Whichever loop detects termination first closes the connection and emits exactly one `SessionDownEvent` to the broker.
+Closing the socket before notifying the broker prevents teardown from leaving the connection open if broker processing is delayed.
 
 #### Reader Loop
+The reader loop owns all reads from the connection.
+It decodes inbound protocol commands and forwards them to the broker as `CmdEvent`s.
+If decoding fails with a protocol error, it emits `ProtocolErrorEvent`; otherwise, normal EOF-style disconnects simply trigger session shutdown.
 
 #### Writer Loop
+The writer loop owns all writes to the connection.
+It receives outbound commands from the broker over a buffered channel, encodes them in order, and flushes them to the socket.
+Each write uses a bounded write deadline; write failures terminate the session.
 
 ### Broker
 
@@ -145,23 +156,3 @@ The registry itself will accept any malformed string. This decision is intention
 The registry maintains an index of CIDs, their related SIDs, and their location in the trie.
 This is done so deletion is efficient and nodes, along with parents that have empty subscriptions, can be pruned.
 When a connection is dropped, the CID and all of its related SIDs are removed from the trie.
-
-## Runtime Flows
-
-### Connection Startup
-
-### Publish Delivery
-
-### Protocol Error Handling
-
-### Connection Shutdown
-
-## Backpressure and Slow Consumers
-
-## Heartbeats and Liveness
-
-## Error Handling Strategy
-
-## Known Limitations
-
-## Future Improvements

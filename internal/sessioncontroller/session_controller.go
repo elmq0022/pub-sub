@@ -24,8 +24,12 @@ func NewSessionController(brokerInbox chan<- broker.BrokerEvent) *SessionControl
 	}
 }
 
+func (s *SessionController) nextClientID() int64 {
+	return s.nextCID.Add(1) - 1
+}
+
 func (s *SessionController) Start(conn net.Conn) {
-	cid := s.nextCID.Add(1) - 1
+	cid := s.nextClientID()
 	outbound := make(chan codec.OutboundCommands, 256)
 	var downOnce sync.Once
 
