@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/elmq0022/pub-sub/internal/broker"
@@ -14,7 +15,7 @@ import (
 
 type SessionController struct {
 	brokerInbox chan<- broker.BrokerEvent
-	nextCID     int64
+	nextCID     atomic.Int64
 }
 
 func NewSessionController(brokerInbox chan<- broker.BrokerEvent) *SessionController {
@@ -24,12 +25,10 @@ func NewSessionController(brokerInbox chan<- broker.BrokerEvent) *SessionControl
 }
 
 func (s *SessionController) Start(conn net.Conn) {
-	cid := s.nextCID
-	s.nextCID++
+	cid := s.nextCID.Add(1) - 1
 	outbound := make(chan codec.OutboundCommands, 256)
 	var downOnce sync.Once
 
-	// TODO: consider a handshake channel to coordinate start.
 	go writerLoop(cid, conn, s.brokerInbox, outbound, &downOnce)
 	s.brokerInbox <- broker.SessionUpEvent{
 		CID:      cid,
@@ -53,8 +52,8 @@ func readerLoop(cid int64, conn net.Conn, brokerInbox chan<- broker.BrokerEvent,
 	}
 
 	defer func() {
-		sendSessionDownOnce(cid, brokerInbox, downOnce)
 		_ = conn.Close()
+		sendSessionDownOnce(cid, brokerInbox, downOnce)
 	}()
 
 	for {
@@ -102,8 +101,8 @@ func writerLoop(
 	b := bufio.NewWriterSize(conn, 32*1024)
 
 	defer func() {
-		sendSessionDownOnce(cid, brokerInbox, downOnce)
 		_ = conn.Close()
+		sendSessionDownOnce(cid, brokerInbox, downOnce)
 	}()
 
 	const timeout = 5 * time.Second
