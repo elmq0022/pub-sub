@@ -104,11 +104,30 @@ serializes itself.
 
 ### Subject Registry
 
-#### Data Model
+The subject registry uses a trie-based lookup.
+The subject registry is owned exclusively by the single synchronous broker, which removes the need for locks on the trie.
 
-#### Lookup Semantics
+Each node in the trie consists of:
 
-#### Subscription Removal and Pruning
+- a pointer to its parent
+- a map of child nodes
+- a slice of subscribers
+- its own key value, which makes pruning from its parent easier
+
+Subscribe events traverse the trie depth-first and add new nodes as needed.
+The subscriber CID and SID are added to the subscription slice.
+CIDs are managed by the session controller, and SIDs are managed by the subscribing client.
+The registry does not enforce single subscriptions, and multiple subscriptions are possible.
+
+Lookups support the `*` and `>` NATS wildcards.
+Delivery order is traversal order.
+
+The registry relies on the parser to ensure subscriptions are well formed.
+The registry itself will accept any malformed string. This decision is intentional, as the expectation is that all subscriptions come from a valid command.
+
+The registry maintains an index of CIDs, their related SIDs, and their location in the trie.
+This is done so deletion is efficient and nodes, along with parents that have empty subscriptions, can be pruned.
+When a connection is dropped, the CID and all of its related SIDs are removed from the trie.
 
 ## Runtime Flows
 
