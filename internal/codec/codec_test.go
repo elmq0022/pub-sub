@@ -227,6 +227,37 @@ func TestCodecDecodePayloadBoundaries(t *testing.T) {
 	})
 }
 
+type singleByteReadWriter struct {
+	data []byte
+	pos  int
+}
+
+func (rw *singleByteReadWriter) Read(p []byte) (int, error) {
+	if rw.pos >= len(rw.data) {
+		return 0, io.EOF
+	}
+	p[0] = rw.data[rw.pos]
+	rw.pos++
+	return 1, nil
+}
+
+func (rw *singleByteReadWriter) Write(p []byte) (int, error) {
+	return len(p), nil
+}
+
+func TestCodecDecodePubPayloadArrivesIncrementally(t *testing.T) {
+	rw := &singleByteReadWriter{
+		data: []byte("PUB foo 5\r\nhello\r\n"),
+	}
+
+	c, err := NewCodec(rw)
+	require.NoError(t, err)
+
+	got, err := c.Decode()
+	require.NoError(t, err)
+	assert.Equal(t, Pub{Subject: []byte("foo"), Len: 5, Payload: []byte("hello")}, got)
+}
+
 func TestCodecDecodeWithChunkedReader(t *testing.T) {
 	rw := &chunkedReadWriter{
 		data:  []byte("PUB foo 5\r\nhello\r\n"),

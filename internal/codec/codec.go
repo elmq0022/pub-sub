@@ -85,24 +85,23 @@ func (c *Codec) Decode() (InboundCommands, error) {
 				return nil, errors.New("payload too large")
 			}
 
-			ss.Msg = make([]byte, size)
-			n, err := io.ReadFull(c.brw, ss.Msg)
-			if err != nil {
-				return nil, err
-			}
-
-			if int64(n) != size {
-				return nil, errors.New("did not get full payload")
-			}
-
-				c, err := c.brw.ReadByte()
+			ss.Msg = make([]byte, 0, size)
+			for int64(len(ss.Msg)) < size {
+				payloadByte, err := c.brw.ReadByte()
 				if err != nil {
 					return nil, err
 				}
-				if c != '\r' {
-					return nil, errors.New("bad payload")
-				}
-				state = ST_CR_END
+				ss.Msg = append(ss.Msg, payloadByte)
+			}
+
+			c, err := c.brw.ReadByte()
+			if err != nil {
+				return nil, err
+			}
+			if c != '\r' {
+				return nil, errors.New("bad payload")
+			}
+			state = ST_CR_END
 
 		case ST_UNSUB_SID:
 			ss.SID = append(ss.SID, b)
