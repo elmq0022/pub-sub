@@ -67,9 +67,22 @@ The implementation supports:
 
 A simplified view of how session, protocol, broker, and registry interactions move through the system.
 
+<!-- todo talk about the actual flows -->
+
+
 ## Components
 
 ### Wire Protocol Encoder / Decoder
+
+Decoding is done incrementally from a buffered reader over the connection.
+Each byte advances parser state through a transition table, and an associated switch
+accumulates parsed fields in scratch space before constructing the final command.
+The decoder is low-allocation, but it is not zero-allocation like NATS.
+`PUB` and `SUB` still allocate and remain an area for improvement.
+Malformed commands return a decode error, which causes the reader to terminate the connection.
+Inbound commands are identified by an interface plus a no-op marker method.
+Outbound commands are identified structurally by implementing `EncodeTo`, and each outbound type
+serializes itself.
 
 ### Session Controller
 
