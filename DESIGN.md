@@ -96,16 +96,33 @@ serializes itself.
 
 #### Event Types
 
+The broker has an unbuffered inbox channel.
+It receives all broker events through that single input and processes them in one blocking switch.
+
 #### Session State
+
+The broker has sole responsibility for managing the subject registry.
+It also maintains client session state.
+Each client session stores its associated channel, whether the broker is awaiting a heartbeat response (`PONG`), and the time the last heartbeat (`PING`) was sent.
 
 #### Command Handling
 
+The broker does not read from or write to client connections directly. This keeps responsibilities cleanly separated between the broker and the reader and writer loops.
+The synchronous design prevents race conditions in the broker and makes correct implementation easier, at the cost of becoming a bottleneck once decoding is optimized for allocations.
+
+Its main job is to process every event sent to it.
+Those events can change broker state by registering new connections, updating subscriptions, dropping connections, and triggering heartbeats.
+
 #### Disconnect Policy
+
+The broker also starts a heartbeat goroutine that sends heartbeat ticks at a fixed interval.
+When it receives a tick, it checks each session's heartbeat state and disconnects connections that have not responded in time.
+If a session is not already waiting on a `PONG`, the broker has the writer send a new `PING`.
+When a connection closes, the reader or writer loop sends a message to the broker so it can remove that connection from its session state.
 
 ### Subject Registry
 
 The subject registry uses a trie-based lookup.
-The subject registry is owned exclusively by the single synchronous broker, which removes the need for locks on the trie.
 
 Each node in the trie consists of:
 
