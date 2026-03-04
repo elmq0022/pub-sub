@@ -5,8 +5,8 @@ import (
 	"log"
 	"net"
 
-	"github.com/elmq0022/pub-sub/internal/config"
 	"github.com/elmq0022/pub-sub/internal/broker"
+	"github.com/elmq0022/pub-sub/internal/config"
 	"github.com/elmq0022/pub-sub/internal/sessioncontroller"
 	"github.com/elmq0022/pub-sub/internal/subjectregistry"
 )

@@ -36,7 +36,7 @@ type InboundCommands interface {
 
 type Ping struct{}
 
-func (Ping) Kind() Kind { return KindPing }
+func (Ping) Kind() Kind        { return KindPing }
 func (Ping) IsInboundCommand() {}
 
 func (Ping) EncodeTo(w *bufio.Writer) error {
@@ -49,7 +49,7 @@ func (Ping) EncodeTo(w *bufio.Writer) error {
 
 type Pong struct{}
 
-func (Pong) Kind() Kind { return KindPong }
+func (Pong) Kind() Kind        { return KindPong }
 func (Pong) IsInboundCommand() {}
 
 func (Pong) EncodeTo(w *bufio.Writer) error {
@@ -62,7 +62,7 @@ func (Pong) EncodeTo(w *bufio.Writer) error {
 
 type Connect struct{}
 
-func (Connect) Kind() Kind { return KindConnect }
+func (Connect) Kind() Kind        { return KindConnect }
 func (Connect) IsInboundCommand() {}
 
 type Sub struct {
@@ -70,7 +70,7 @@ type Sub struct {
 	SID     int64
 }
 
-func (Sub) Kind() Kind { return KindSub }
+func (Sub) Kind() Kind        { return KindSub }
 func (Sub) IsInboundCommand() {}
 
 type Pub struct {
@@ -79,14 +79,14 @@ type Pub struct {
 	Payload []byte
 }
 
-func (Pub) Kind() Kind { return KindPub }
+func (Pub) Kind() Kind        { return KindPub }
 func (Pub) IsInboundCommand() {}
 
 type Unsub struct {
 	SID int64
 }
 
-func (Unsub) Kind() Kind { return KindUnsub }
+func (Unsub) Kind() Kind        { return KindUnsub }
 func (Unsub) IsInboundCommand() {}
 
 // Msg is outbound-only and serialized by the writer actor as:

@@ -35,7 +35,9 @@ func (b *Broker) Input() chan<- BrokerEvent {
 }
 
 func (b *Broker) Run() {
-	go b.startHeartbeat()
+	if b.config.HeartbeatTickInterval > 0 {
+		go b.startHeartbeat()
+	}
 
 	for msg := range b.inbox {
 		switch ev := msg.(type) {
