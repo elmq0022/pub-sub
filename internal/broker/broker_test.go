@@ -22,6 +22,7 @@ func TestHandleSessionDownEventRemovesSessionAndSubscriptions(t *testing.T) {
 		CID: 42,
 		Cmd: codec.Sub{Subject: []byte("foo.bar"), SID: 7},
 	})
+	assertOutboundOK(t, outbound)
 
 	b.handleSessionDownEvent(SessionDownEvent{CID: 42})
 
@@ -54,10 +55,12 @@ func TestHandleSessionDownEventDuplicateIsIdempotent(t *testing.T) {
 		CID: 7,
 		Cmd: codec.Sub{Subject: []byte("foo.one"), SID: 1},
 	})
+	assertOutboundOK(t, outbound)
 	b.handleCmdEvent(CmdEvent{
 		CID: 7,
 		Cmd: codec.Sub{Subject: []byte("foo.two"), SID: 2},
 	})
+	assertOutboundOK(t, outbound)
 
 	b.handleSessionDownEvent(SessionDownEvent{CID: 7})
 	b.handleSessionDownEvent(SessionDownEvent{CID: 7})
@@ -93,6 +96,7 @@ func TestHandleProtocolErrorEventDisconnectsSessionAndRemovesSubscriptions(t *te
 		CID: 9,
 		Cmd: codec.Sub{Subject: []byte("foo.err"), SID: 3},
 	})
+	assertOutboundOK(t, outbound)
 
 	b.handleProtocolErrorEvent(ProtocolErrorEvent{
 		CID: 9,
@@ -148,6 +152,37 @@ func TestHandleProtocolErrorEventWithoutSessionRemovesStaleSubscriptions(t *test
 	}
 }
 
+func TestHandleCmdEventUnsubUnknownSIDAckAndKeepsSession(t *testing.T) {
+	registry := subjectregistry.NewSubjectRegistry()
+	b := NewBroker(registry, NewBrokerConfig(time.Second, 3*time.Second))
+
+	outbound := make(chan codec.OutboundCommands, 1)
+	b.handleSessionUpEvent(SessionUpEvent{
+		CID:      11,
+		Outbound: outbound,
+	})
+
+	b.handleCmdEvent(CmdEvent{
+		CID: 11,
+		Cmd: codec.Unsub{SID: 999},
+	})
+
+	assertOutboundOK(t, outbound)
+
+	if _, ok := b.sessions[11]; !ok {
+		t.Fatal("session removed after unknown UNSUB")
+	}
+
+	select {
+	case msg, ok := <-outbound:
+		if !ok {
+			t.Fatal("outbound channel unexpectedly closed")
+		}
+		t.Fatalf("unexpected outbound message after UNSUB ack: %T", msg)
+	default:
+	}
+}
+
 func readOutbound(t *testing.T, ch <-chan codec.OutboundCommands) (codec.OutboundCommands, bool) {
 	t.Helper()
 
@@ -157,6 +192,18 @@ func readOutbound(t *testing.T, ch <-chan codec.OutboundCommands) (codec.Outboun
 	default:
 		t.Fatal("expected outbound message")
 		return nil, false
+	}
+}
+
+func assertOutboundOK(t *testing.T, ch <-chan codec.OutboundCommands) {
+	t.Helper()
+
+	msg, ok := readOutbound(t, ch)
+	if !ok {
+		t.Fatal("expected codec.OK before channel close")
+	}
+	if _, ok := msg.(codec.OK); !ok {
+		t.Fatalf("expected codec.OK, got %T", msg)
 	}
 }
 

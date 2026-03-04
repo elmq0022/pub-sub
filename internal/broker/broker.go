@@ -117,6 +117,15 @@ func (b *Broker) handleCmdEvent(ev CmdEvent) {
 				SID: cmd.SID,
 			},
 		)
+		session, ok := b.sessions[ev.CID]
+		if !ok {
+			break
+		}
+		select {
+		case session.Outbound <- codec.OK{}:
+		default:
+			b.disconnectCID(ev.CID, session)
+		}
 	case codec.Pub:
 		subs, err := b.registry.Lookup(string(cmd.Subject))
 		if err != nil {
@@ -140,7 +149,16 @@ func (b *Broker) handleCmdEvent(ev CmdEvent) {
 		}
 
 	case codec.Unsub:
-		b.registry.RemoveSub(ev.CID, cmd.SID)
+		_ = b.registry.RemoveSub(ev.CID, cmd.SID)
+		session, ok := b.sessions[ev.CID]
+		if !ok {
+			break
+		}
+		select {
+		case session.Outbound <- codec.OK{}:
+		default:
+			b.disconnectCID(ev.CID, session)
+		}
 	}
 }
 
