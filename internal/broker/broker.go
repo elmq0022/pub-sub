@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/elmq0022/pub-sub/internal/codec"
+	"github.com/elmq0022/pub-sub/internal/config"
 	"github.com/elmq0022/pub-sub/internal/subjectregistry"
 )
 
@@ -17,10 +18,10 @@ type Broker struct {
 	registry subjectregistry.Registry
 	sessions map[int64]ClientSession
 	inbox    chan BrokerEvent
-	config   BrokerConfig
+	config   config.Config
 }
 
-func NewBroker(r subjectregistry.Registry, config BrokerConfig) *Broker {
+func NewBroker(r subjectregistry.Registry, config config.Config) *Broker {
 	return &Broker{
 		registry: r,
 		sessions: make(map[int64]ClientSession),

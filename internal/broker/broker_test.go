@@ -5,12 +5,13 @@ import (
 	"time"
 
 	"github.com/elmq0022/pub-sub/internal/codec"
+	"github.com/elmq0022/pub-sub/internal/config"
 	"github.com/elmq0022/pub-sub/internal/subjectregistry"
 )
 
 func TestHandleSessionDownEventRemovesSessionAndSubscriptions(t *testing.T) {
 	registry := subjectregistry.NewSubjectRegistry()
-	b := NewBroker(registry, NewBrokerConfig(time.Second, 3*time.Second))
+	b := NewBroker(registry, testConfig())
 
 	outbound := make(chan codec.OutboundCommands, 1)
 	b.handleSessionUpEvent(SessionUpEvent{
@@ -43,7 +44,7 @@ func TestHandleSessionDownEventRemovesSessionAndSubscriptions(t *testing.T) {
 
 func TestHandleSessionDownEventDuplicateIsIdempotent(t *testing.T) {
 	registry := subjectregistry.NewSubjectRegistry()
-	b := NewBroker(registry, NewBrokerConfig(time.Second, 3*time.Second))
+	b := NewBroker(registry, testConfig())
 
 	outbound := make(chan codec.OutboundCommands, 1)
 	b.handleSessionUpEvent(SessionUpEvent{
@@ -84,7 +85,7 @@ func TestHandleSessionDownEventDuplicateIsIdempotent(t *testing.T) {
 
 func TestHandleProtocolErrorEventDisconnectsSessionAndRemovesSubscriptions(t *testing.T) {
 	registry := subjectregistry.NewSubjectRegistry()
-	b := NewBroker(registry, NewBrokerConfig(time.Second, 3*time.Second))
+	b := NewBroker(registry, testConfig())
 
 	outbound := make(chan codec.OutboundCommands, 1)
 	b.handleSessionUpEvent(SessionUpEvent{
@@ -132,7 +133,7 @@ func TestHandleProtocolErrorEventDisconnectsSessionAndRemovesSubscriptions(t *te
 
 func TestHandleProtocolErrorEventWithoutSessionRemovesStaleSubscriptions(t *testing.T) {
 	registry := subjectregistry.NewSubjectRegistry()
-	b := NewBroker(registry, NewBrokerConfig(time.Second, 3*time.Second))
+	b := NewBroker(registry, testConfig())
 
 	if err := registry.AddSub("foo.stale", subjectregistry.Sub{CID: 55, SID: 8}); err != nil {
 		t.Fatalf("failed to seed registry: %v", err)
@@ -154,7 +155,7 @@ func TestHandleProtocolErrorEventWithoutSessionRemovesStaleSubscriptions(t *test
 
 func TestHandleCmdEventUnsubUnknownSIDAckAndKeepsSession(t *testing.T) {
 	registry := subjectregistry.NewSubjectRegistry()
-	b := NewBroker(registry, NewBrokerConfig(time.Second, 3*time.Second))
+	b := NewBroker(registry, testConfig())
 
 	outbound := make(chan codec.OutboundCommands, 1)
 	b.handleSessionUpEvent(SessionUpEvent{
@@ -217,5 +218,13 @@ func assertClosed(t *testing.T, ch <-chan codec.OutboundCommands) {
 		}
 	default:
 		t.Fatal("expected outbound channel to be closed")
+	}
+}
+
+func testConfig() config.Config {
+	return config.Config{
+		Port:                  "8080",
+		HeartbeatTickInterval: time.Second,
+		HeartbeatTimeout:      3 * time.Second,
 	}
 }
